@@ -33,8 +33,33 @@ class MinimalExplainer(VoiceoverScene):
     def setup(self):
         super().setup()
         self._voiceover_enabled = False
-        provider = os.getenv("MANIM_TTS_PROVIDER", "none").lower()
-        if provider == "gtts":
+        default_provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "none"
+        provider = os.getenv("MANIM_TTS_PROVIDER", default_provider).lower()
+        if provider == "openrouter":
+            from manim_lib.openrouter_voiceover import (
+                DEFAULT_OPENROUTER_TTS_MODEL,
+                DEFAULT_OPENROUTER_TTS_VOICE,
+                OpenRouterSpeechService,
+            )
+
+            style_degree = os.getenv("OPENROUTER_TTS_STYLE_DEGREE")
+            self.set_speech_service(
+                OpenRouterSpeechService(
+                    model=os.getenv(
+                        "OPENROUTER_TTS_MODEL", DEFAULT_OPENROUTER_TTS_MODEL
+                    ),
+                    voice=os.getenv(
+                        "OPENROUTER_TTS_VOICE", DEFAULT_OPENROUTER_TTS_VOICE
+                    ),
+                    speed=float(os.getenv("OPENROUTER_TTS_SPEED", "0.96")),
+                    style=os.getenv("OPENROUTER_TTS_STYLE"),
+                    style_degree=(
+                        float(style_degree) if style_degree is not None else None
+                    ),
+                )
+            )
+            self._voiceover_enabled = True
+        elif provider == "gtts":
             from manim_voiceover.services.gtts import GTTSService
 
             self.set_speech_service(GTTSService())
@@ -53,7 +78,8 @@ class MinimalExplainer(VoiceoverScene):
             self._voiceover_enabled = True
         elif provider != "none":
             raise ValueError(
-                "MANIM_TTS_PROVIDER must be none, gtts, openai, or azure"
+                "MANIM_TTS_PROVIDER must be none, openrouter, gtts, openai, "
+                "or azure"
             )
 
     @contextmanager

@@ -1,4 +1,5 @@
 import pytest
+from manim import DOWN, RIGHT
 
 from manim_lib import (
     CandidateToken,
@@ -10,6 +11,7 @@ from manim_lib import (
     TokenSequence,
     TokenState,
     TreeNode,
+    contains,
 )
 
 
@@ -33,6 +35,42 @@ def test_stable_tree_requires_existing_unique_nodes():
     assert edge is tree.edges[("root", "child")]
     with pytest.raises(ValueError):
         tree.add_node("root", TreeNode("duplicate"), (1, 1, 0))
+
+
+def test_tree_node_constrains_long_label_within_circle():
+    node = TreeNode("system", radius=0.32)
+    assert contains(node.circle, node.label, padding=0.0)
+    # A long token at a small radius must actually shrink, not merely fit by
+    # accident, so this also guards against a no-op containment check.
+    unscaled_width_at_font_24 = 1.1
+    assert node.label.width < unscaled_width_at_font_24
+
+
+def test_tree_node_short_label_is_not_shrunk_unnecessarily():
+    node = TreeNode("a", radius=0.46)
+    default_width = TreeNode("a", radius=10.0).label.width
+    assert node.label.width == pytest.approx(default_width)
+
+
+def test_tree_node_score_placement_is_configurable_and_backward_compatible():
+    default_node = TreeNode("model", score=0.6, radius=0.4)
+    assert default_node.score_label is not None
+    # Default placement keeps the historical behavior: to the right.
+    assert default_node.score_label.get_center()[0] > default_node.circle.get_center()[0]
+
+    below_node = TreeNode("model", score=".60", radius=0.4, score_direction=DOWN)
+    assert below_node.score_label.get_center()[1] < below_node.circle.get_center()[1]
+    assert not contains(below_node.circle, below_node.score_label)
+
+
+def test_tree_node_set_score_moves_existing_label_in_place():
+    node = TreeNode("model", radius=0.4)
+    assert node.score_label is None
+    first = node.set_score(".60", direction=RIGHT)
+    assert first is node.score_label
+    node.set_score(".33", direction=DOWN)
+    assert node.score_label.text == ".33"
+    assert node.score_label.get_center()[1] < node.circle.get_center()[1]
 
 
 def test_matrix_highlights_and_validates_shape():

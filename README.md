@@ -54,7 +54,7 @@ Create an isolated environment and install the package:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev,voiceover-gtts]"
+python -m pip install -e ".[dev,voiceover-openrouter]"
 ```
 
 PowerShell activation:
@@ -62,11 +62,11 @@ PowerShell activation:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,voiceover-gtts]"
+python -m pip install -e ".[dev,voiceover-openrouter]"
 ```
 
-Install `.[voiceover-openai]` or `.[voiceover-azure]` instead when using those
-services.
+Install `.[voiceover-gtts]`, `.[voiceover-openai]`, or
+`.[voiceover-azure]` instead when using those services.
 
 ## Narration and TTS
 
@@ -79,25 +79,30 @@ animations inside each block use the returned tracker's duration.
 
 | Value | Setup |
 |---|---|
-| `none` | Default. Silent deterministic draft; no service or credentials. |
-| `gtts` | Recommended simple narrated provider; network access, no API key. |
+| `none` | Silent deterministic draft; no service or credentials. |
+| `openrouter` | Production default when `OPENROUTER_API_KEY` exists. Uses MAI-Voice-2 with the Harper voice. |
+| `gtts` | Free draft provider; network access, no API key. |
 | `openai` | Set `OPENAI_API_KEY`; optional `OPENAI_TTS_VOICE` defaults to `alloy`. |
 | `azure` | Set `AZURE_SUBSCRIPTION_KEY` and `AZURE_SERVICE_REGION`. |
 
 No credentials are stored in the repository. Provider SDK behavior and
 supported voices are controlled by the installed `manim-voiceover` version.
 
-```bash
-export MANIM_TTS_PROVIDER=gtts
+OpenRouter narration uses these environment variables:
+
+```text
+OPENROUTER_API_KEY                 required
+OPENROUTER_TTS_MODEL               default: microsoft/mai-voice-2
+OPENROUTER_TTS_VOICE               default: en-US-Harper:MAI-Voice-2
+OPENROUTER_TTS_SPEED               default: 0.96
+OPENROUTER_TTS_STYLE               optional Azure style
+OPENROUTER_TTS_STYLE_DEGREE        optional style strength
 ```
 
-```powershell
-$env:MANIM_TTS_PROVIDER = "gtts"
-```
-
-If optional voiceover dependencies are unavailable, leave the provider as
-`none`. The example preserves narration blocks and approximate pacing but
-produces a silent development render.
+When `OPENROUTER_API_KEY` exists, the example selects OpenRouter automatically.
+Override it with `MANIM_TTS_PROVIDER=none` for a silent draft or
+`MANIM_TTS_PROVIDER=gtts` for free TTS. Silent mode preserves narration blocks
+and approximate pacing.
 
 ## Render the minimal example
 

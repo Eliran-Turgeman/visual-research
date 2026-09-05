@@ -17,9 +17,13 @@ On PowerShell:
 .\scripts\render.ps1 examples\minimal\scene.py MinimalExplainer
 ```
 
-The default `MANIM_TTS_PROVIDER=none` creates a deterministic silent draft.
-For narration, install a voiceover extra and set the provider:
+With `OPENROUTER_API_KEY` set, the example uses
+`microsoft/mai-voice-2` and `en-US-Harper:MAI-Voice-2` automatically:
 
 ```bash
-MANIM_TTS_PROVIDER=gtts ./scripts/render.sh examples/minimal/scene.py MinimalExplainer
+./scripts/render.sh examples/minimal/scene.py MinimalExplainer
 ```
+
+Set `MANIM_TTS_PROVIDER=none` for a deterministic silent draft. Other
+OpenRouter models and voices can be selected with `OPENROUTER_TTS_MODEL` and
+`OPENROUTER_TTS_VOICE`.

@@ -1,10 +1,20 @@
 """Small stable-layout tree primitives."""
 
-from manim import BLUE, GRAY, YELLOW, Circle, Line, Text, VGroup
+from manim import BLUE, GRAY, RIGHT, YELLOW, Circle, Line, Text, VGroup
+
+# Fraction of the circle's diameter a label may occupy before it is scaled
+# down to stay inside the circle. Leaves a visible ring of padding.
+_LABEL_FIT_FRACTION = 0.82
 
 
 class TreeNode(VGroup):
-    """A labeled circular tree node with an optional score."""
+    """A labeled circular tree node with an optional score.
+
+    The label is automatically scaled down, preserving its aspect ratio, so it
+    never escapes the circle regardless of token length. The score, when
+    given, is placed outside the circle in a caller-chosen direction so it can
+    be moved out of the way of neighboring nodes in a crowded layout.
+    """
 
     def __init__(
         self,
@@ -12,18 +22,102 @@ class TreeNode(VGroup):
         *,
         score: float | str | None = None,
         radius: float = 0.32,
+        font_size: float = 24,
+        score_direction=RIGHT,
+        score_buff: float = 0.08,
+        score_font_size: float = 16,
     ) -> None:
         super().__init__()
+        self.radius = radius
         self.circle = Circle(radius=radius, color=GRAY).set_fill(GRAY, opacity=0.1)
-        self.label = Text(label, font_size=24).move_to(self.circle)
+        self.label = Text(label, font_size=font_size)
+        self._fit_label_to_circle()
+        self.label.move_to(self.circle)
         self.score_label = None
         self.add(self.circle, self.label)
         if score is not None:
-            value = f"{score:.2f}" if isinstance(score, float) else str(score)
-            self.score_label = Text(value, font_size=16).next_to(
-                self.circle, direction=(1, 0, 0), buff=0.08
+            self.set_score(
+                score,
+                direction=score_direction,
+                buff=score_buff,
+                font_size=score_font_size,
             )
-            self.add(self.score_label)
+
+    def _fit_label_to_circle(self) -> None:
+        """Scale ``self.label`` down so it stays within the node circle."""
+        available = 2 * self.radius * _LABEL_FIT_FRACTION
+        width_factor = available / self.label.width if self.label.width else 1.0
+        height_factor = available / self.label.height if self.label.height else 1.0
+        factor = min(1.0, width_factor, height_factor)
+        if factor < 1.0:
+            self.label.scale(factor)
+
+    def set_score(
+        self,
+        score: float | str,
+        *,
+        direction=RIGHT,
+        buff: float = 0.08,
+        font_size: float = 16,
+    ) -> Text:
+        """Create the score label at ``direction`` outside the circle and
+        attach it immediately.
+
+        Use this when the label should simply appear alongside the node
+        (for example inside the node's own constructor, or a plain
+        ``FadeIn``). When a *different* mobject should visibly turn into
+        the score (an equation result flying to its node), build the target
+        with :meth:`prepare_score` instead, animate into it, and finish with
+        :meth:`attach_score` -- attaching a label before its arrival
+        animation plays makes it pop into view early and can leave a stray
+        duplicate behind once the animation finishes.
+
+        Passing a different ``direction`` for crowded siblings (for example
+        ``DOWN`` instead of the default ``RIGHT``) is the supported way to
+        avoid a score label colliding with a neighboring node.
+        """
+        label = self.prepare_score(
+            score, direction=direction, buff=buff, font_size=font_size
+        )
+        self.attach_score(label)
+        return label
+
+    def prepare_score(
+        self,
+        score: float | str,
+        *,
+        direction=RIGHT,
+        buff: float = 0.08,
+        font_size: float = 16,
+    ) -> Text:
+        """Build the score label's final look and position without
+        attaching it to this node or the scene.
+
+        The returned :class:`~manim.mobject.text.text_mobject.Text` is a
+        pure blueprint: use it as a ``Transform``/``TransformFromCopy``
+        target so some other mobject (an equation result, say) can
+        visibly become the score. Once that animation finishes, adopt its
+        actual on-screen result with :meth:`attach_score` so the node ends
+        up owning exactly one score label, never a second stray copy.
+        """
+        value = f"{score:.2f}" if isinstance(score, float) else str(score)
+        return Text(value, font_size=font_size).next_to(
+            self.circle, direction=direction, buff=buff
+        )
+
+    def attach_score(self, label: Text) -> Text:
+        """Adopt ``label`` as this node's official, persistent score label.
+
+        ``label`` should already carry its final on-screen appearance --
+        typically the mobject an animation produced by transforming into a
+        target built with :meth:`prepare_score`. Any previous score label
+        is dropped so the node always shows at most one.
+        """
+        if self.score_label is not None:
+            self.remove(self.score_label)
+        self.score_label = label
+        self.add(label)
+        return label
 
     def highlight(self, color=YELLOW) -> "TreeNode":
         """Highlight this node in place."""

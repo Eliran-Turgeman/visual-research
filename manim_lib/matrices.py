@@ -29,6 +29,8 @@ class LabeledMatrix(VGroup):
 
         super().__init__()
         self.cells: list[list[VGroup]] = []
+        self.row_label_mobjects: list[Text] = []
+        self.column_label_mobjects: list[Text] = []
         for row_index, row in enumerate(values):
             cells = []
             for column_index, value in enumerate(row):
@@ -47,11 +49,19 @@ class LabeledMatrix(VGroup):
 
         if row_labels:
             for label, row in zip(row_labels, self.cells):
-                self.add(Text(label, font_size=20).next_to(row[0], LEFT, buff=0.18))
+                text = Text(label, font_size=20).next_to(row[0], LEFT, buff=0.18)
+                self.row_label_mobjects.append(text)
+                self.add(text)
         if column_labels:
             for label, cell in zip(column_labels, self.cells[0]):
-                self.add(Text(label, font_size=20).next_to(cell, UP, buff=0.18))
+                text = Text(label, font_size=20).next_to(cell, UP, buff=0.18)
+                self.column_label_mobjects.append(text)
+                self.add(text)
         self.center()
+
+    def row_group(self, row: int) -> VGroup:
+        """Return a VGroup of one row's cells, for a step-by-step reveal."""
+        return VGroup(*self.cells[row])
 
     def highlight_cells(
         self,

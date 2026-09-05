@@ -13,6 +13,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+voiceover-openrouter = [
+    "manim-voiceover>=0.3.7,<0.4",
+    "openai>=2.0,<3",
+    "setuptools>=75,<81",
+]
 voiceover-gtts = [
     "manim-voiceover[gtts]>=0.3.7,<0.4",
     "setuptools>=75,<81",
