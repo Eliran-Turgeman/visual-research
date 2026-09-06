@@ -8,6 +8,14 @@ from .composition import (
     side_by_side,
 )
 from .computation import Computation, Operand
+from .continuity import (
+    grow_branch,
+    map_ancestry_to_mask,
+    map_tree_to_sequence,
+    restore_semantic_focus,
+    section_transition,
+    semantic_focus,
+)
 from .equations import EquationSteps
 from .focus import FocusContext, focus_on, restore_focus
 from .layout import (
@@ -22,6 +30,11 @@ from .layout import (
     within_safe_frame,
 )
 from .matrices import LabeledMatrix
+from .probability import (
+    DistributionEntry,
+    ProbabilityDistribution,
+    animate_mass_transfer,
+)
 from .theme import (
     ACCENT,
     BACKGROUND,
@@ -75,6 +88,17 @@ __all__ = [
     # Computation
     "Computation",
     "Operand",
+    # Continuity
+    "grow_branch",
+    "map_ancestry_to_mask",
+    "map_tree_to_sequence",
+    "restore_semantic_focus",
+    "section_transition",
+    "semantic_focus",
+    # Probability
+    "DistributionEntry",
+    "ProbabilityDistribution",
+    "animate_mass_transfer",
     # Equations
     "EquationSteps",
     # Layout

@@ -111,6 +111,117 @@ add meaningful progressive emphasis, intermediate states, or annotations.
 Silent fallback should preserve the same block boundaries and approximate
 timing so it remains useful for development.
 
+## Continuity primitives
+
+Build visual explanations as one evolving picture.  Use the helpers in
+`manim_lib.probability` and `manim_lib.continuity` to connect stages with
+identity-preserving animations rather than clearing and rebuilding.
+
+### Probability distributions
+
+Use `ProbabilityDistribution` for any named probability column.  Entries are
+keyed, expose `.token_anchor`, `.value_anchor`, `.highlight_anchor`, and
+survive across animation phases.
+
+```python
+from manim_lib.probability import ProbabilityDistribution, animate_mass_transfer
+
+dist = ProbabilityDistribution({"a": ("A", 0.5), "b": ("B", 0.3)})
+self.play(FadeIn(dist))
+# Transfer mass from entry into a tree node:
+anim = animate_mass_transfer(dist.entries["a"], child_node)
+self.play(anim)
+```
+
+Do **not** build ad-hoc `Text`/`Rectangle` groups for probability columns.
+Do **not** hard-code token names — pass them from the caller's data.
+
+### Branch growth
+
+Use `grow_branch` to add a child node and edge to a `StableTree` with a single
+call.  It registers the node/edge immediately and returns animations:
+
+```python
+from manim_lib.continuity import grow_branch
+
+anims, edge = grow_branch(tree, "root", "child", child_node, (x, y, 0), label="0.5")
+self.play(*anims)
+```
+
+Do **not** manually call `tree.add_node` + `tree.connect` + build separate
+animations when `grow_branch` covers the case.
+
+### Tree → sequence mapping
+
+Use `map_tree_to_sequence` to transform tree nodes into an ordered token
+sequence.  The caller must provide the explicit key-to-index mapping:
+
+```python
+from manim_lib.continuity import map_tree_to_sequence
+
+anims = map_tree_to_sequence(tree, {"root": 0, "x": 1, "y": 2}, sequence)
+self.play(*anims)
+```
+
+The function validates duplicate indices, missing keys, and out-of-range
+indices.  Do **not** silently infer ordering — always provide the explicit map.
+
+### Ancestry → mask mapping
+
+Use `map_ancestry_to_mask` to highlight matrix cells corresponding to tree
+ancestor relationships, making the connection visible rather than revealing a
+matrix independently:
+
+```python
+from manim_lib.continuity import map_ancestry_to_mask
+
+parent_map = {"root": None, "A": "root", "B": "root"}
+anims, overlays = map_ancestry_to_mask(parent_map, matrix, node_to_index)
+self.play(*anims)
+```
+
+Pass `include_self=False` if diagonal cells should not be highlighted.  The
+function is generic over any tree parent map and `LabeledMatrix`.
+
+### Semantic focus
+
+Use `semantic_focus` / `restore_semantic_focus` for purposeful emphasis with
+safe restoration.  This composes `focus_on` with an optional dim overlay:
+
+```python
+from manim_lib.continuity import semantic_focus, restore_semantic_focus
+
+anims, ctx, overlay = semantic_focus(target, [target, other], use_overlay=True)
+self.play(*anims)
+# ... focused phase ...
+self.play(*restore_semantic_focus([target, other], ctx, overlay))
+```
+
+Do **not** create decorative camera motion for emphasis.
+
+### Section transition
+
+Use `section_transition` when changing chapters while preserving a visual anchor:
+
+```python
+from manim_lib.continuity import section_transition
+
+self.play(*section_transition(anchor=tree, others=[dist, label]))
+```
+
+The anchor is automatically excluded from the fade/dim list.  Use
+`fade_out=False` to dim instead of removing.
+
+### Continuity anti-patterns
+
+- Clearing the scene and rebuilding objects from scratch between stages.
+- Revealing a matrix independently instead of connecting it to the structure
+  that produces it.
+- Using `FadeOut` + `FadeIn` when a `TransformFromCopy` or mass transfer would
+  preserve continuity.
+- Hard-coding DDTree-specific token names in library calls.
+- Inferring tree-to-sequence ordering instead of providing an explicit map.
+
 ## Anti-patterns
 
 - walls of text or PowerPoint-like slides disguised as animation;
