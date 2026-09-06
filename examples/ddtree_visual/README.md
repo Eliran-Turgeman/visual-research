@@ -34,19 +34,32 @@ move into the committed ribbon.
 
 ## Rendering
 
-```bash
+```powershell
 # Silent review animatic (480p, no TTS)
-manim render -ql scene.py DDTreeVisualExplainer
+$env:MANIM_TTS_PROVIDER = "none"
+.\.venv\Scripts\python.exe -m manim -ql examples\ddtree_visual\scene.py DDTreeVisualExplainer
 
 # With OpenRouter TTS
-OPENROUTER_API_KEY=... manim render -qm scene.py DDTreeVisualExplainer
+$env:OPENROUTER_API_KEY = "<your key>"
+$env:MANIM_TTS_PROVIDER = "openrouter"
+.\.venv\Scripts\python.exe -m manim -qh examples\ddtree_visual\scene.py DDTreeVisualExplainer
 
 # Extract review frames
-python scripts/extract_narration_frames.py \
-    media/videos/scene/480p15/DDTreeVisualExplainer.mp4 \
-    media/review/ddtree_visual/timeline.json \
-    media/review/ddtree_visual/
+.\.venv\Scripts\python.exe scripts\extract_narration_frames.py `
+  media\videos\scene\480p15\DDTreeVisualExplainer.mp4 `
+  media\review\ddtree_visual\timeline.json `
+  media\review\ddtree_visual\
 ```
+
+## Production render (1080p60, narrated)
+
+```powershell
+$env:OPENROUTER_API_KEY = (Get-ItemProperty HKCU:\Environment).OPENROUTER_API_KEY
+$env:MANIM_TTS_PROVIDER = "openrouter"
+.\.venv\Scripts\python.exe -m manim -qk --fps 60 examples\ddtree_visual\scene.py DDTreeVisualExplainer
+```
+
+Final output: `media\videos\scene\1080p60\DDTreeVisualExplainer.mp4`
 
 ## Dependencies
 

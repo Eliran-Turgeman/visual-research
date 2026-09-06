@@ -107,7 +107,6 @@ class DFlashVisualExplainer(NarratedScene):
 
     def setup(self):
         super().setup()
-        super().setup()
         self._beat_index = 0
 
     # --- Helpers ---

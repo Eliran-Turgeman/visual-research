@@ -258,3 +258,40 @@ class TestSceneBeatAlignment:
             f"Scene has {len(actual)} beat methods "
             f"but storyboard has {BEAT_COUNT} beats"
         )
+
+
+# ── 480p readability guards ──────────────────────────────────────────────
+
+class TestReadabilityAtLowRes:
+    """Verify that score labels and position-ID labels are readable at 480p."""
+
+    def test_score_font_size_at_least_14(self):
+        """Score labels below 14pt are unreadable at 480p."""
+        assert SCORE_STYLE["font_size"] >= 14, (
+            f"SCORE_STYLE font_size {SCORE_STYLE['font_size']} is too small for 480p"
+        )
+
+    def test_score_labels_do_not_escape_safe_frame(self):
+        """Score labels with the increased font must still fit."""
+        from manim_lib.layout import within_safe_frame
+        tree = StableTree()
+        tree.add_node(
+            "root", TreeNode("well", radius=NODE_RADIUS),
+            TREE_POSITIONS["root"],
+        )
+        for prefix in PREFIXES:
+            node = TreeNode(
+                prefix.token,
+                score=f"{prefix.mass:.3f}",
+                radius=NODE_RADIUS,
+                score_direction=SCORE_STYLE["direction"],
+                score_buff=SCORE_STYLE["buff"],
+                score_font_size=SCORE_STYLE["font_size"],
+            )
+            tree.add_node(prefix.key, node, TREE_POSITIONS[prefix.key])
+            tree.connect(prefix.parent, prefix.key)
+        for key, node in tree.nodes.items():
+            if node.score_label is not None:
+                assert within_safe_frame(node.score_label), (
+                    f"{key} score label outside safe frame"
+                )

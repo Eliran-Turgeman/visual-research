@@ -195,3 +195,11 @@ class TestSceneBeatAlignment:
         assert len(actual) == BEAT_COUNT, (
             f"Scene has {len(actual)} beat methods but storyboard has {BEAT_COUNT} beats"
         )
+
+    def test_setup_does_not_call_super_twice(self):
+        """Regression: setup() must call super().setup() exactly once."""
+        import inspect
+        source = inspect.getsource(DFlashVisualExplainer.setup)
+        assert source.count("super().setup()") == 1, (
+            "DFlashVisualExplainer.setup() calls super().setup() more than once"
+        )

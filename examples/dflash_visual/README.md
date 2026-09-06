@@ -57,6 +57,16 @@ $env:MANIM_TTS_PROVIDER = "none"
 .\.venv\Scripts\python.exe -m pytest tests\test_dflash_visual.py -q
 ```
 
+## Production render (1080p60, narrated)
+
+```powershell
+$env:OPENROUTER_API_KEY = (Get-ItemProperty HKCU:\Environment).OPENROUTER_API_KEY
+$env:MANIM_TTS_PROVIDER = "openrouter"
+.\.venv\Scripts\python.exe -m manim -qk --fps 60 examples\dflash_visual\scene.py DFlashVisualExplainer
+```
+
+Final output: `media\videos\scene\1080p60\DFlashVisualExplainer.mp4`
+
 ## Storyboard
 
 `storyboard.py` is the single source of truth for narration text, beat

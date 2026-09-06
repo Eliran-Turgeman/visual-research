@@ -99,7 +99,7 @@ DIST_BAR_HEIGHT = 0.20
 DIST_BUFF = 0.9
 
 NODE_RADIUS = 0.28
-SCORE_STYLE = {"direction": DOWN, "buff": 0.05, "font_size": 12}
+SCORE_STYLE = {"direction": DOWN, "buff": 0.05, "font_size": 14}
 
 TREE_POSITIONS = {
     "root": (0.0, -0.2, 0),
@@ -473,7 +473,7 @@ class DDTreeVisualExplainer(NarratedScene):
                     tracker, FadeOut(eq), fraction=0.06,
                 )
 
-            self.wait(min(0.5, tracker.duration * 0.05))
+            self.wait(min(1.0, tracker.duration * 0.08))
 
     def _animate_deep_selection(self, beat, prefix):
         """Animate a single depth>1 selection with visible product."""
@@ -587,8 +587,8 @@ class DDTreeVisualExplainer(NarratedScene):
                 zip(FLATTEN_ORDER, FLATTEN_POSITION_IDS)
             ):
                 lbl = Text(
-                    f"pos {pid}", font_size=10, color=TEXT_MUTED,
-                ).move_to(flat_positions[i]).shift(DOWN * 0.28)
+                    f"pos {pid}", font_size=13, color=TEXT_MUTED,
+                ).move_to(flat_positions[i]).shift(DOWN * 0.30)
                 pid_labels.add(lbl)
 
             self.paced(
@@ -732,20 +732,21 @@ class DDTreeVisualExplainer(NarratedScene):
                             fraction=0.10,
                         )
 
-                    # Decision label
+                    # Decision label – hold briefly so the viewer can read it
                     decision = Text(
                         f"target → '{choice_token}'",
-                        font_size=13, color=TARGET_COLOR,
+                        font_size=14, color=TARGET_COLOR,
                     ).next_to(node, UP, buff=0.18)
                     self.paced(tracker, FadeIn(decision), fraction=0.10)
-                    self.paced(tracker, FadeOut(decision), fraction=0.05)
+                    self.wait(min(0.6, tracker.duration * 0.06))
+                    self.paced(tracker, FadeOut(decision), fraction=0.04)
 
                     verified_keys.append(child_key)
                 else:
                     # Miss: token not in tree
                     miss_label = Text(
                         f"target → '{choice_token}' (not in tree)",
-                        font_size=13, color=DANGER.base,
+                        font_size=14, color=DANGER.base,
                     )
                     last_node = self._flat_node_refs[verified_keys[-1]]
                     miss_label.next_to(last_node, UP, buff=0.18)
@@ -761,17 +762,15 @@ class DDTreeVisualExplainer(NarratedScene):
         beat = BEATS[8]
 
         with self.narrate(beat.narration) as tracker:
-            # Build committed ribbon growing from existing ribbon
-            self._ribbon.animate.set_opacity(1.0)
+            # Restore ribbon opacity
             self.paced(
                 tracker,
                 self._ribbon.animate.set_opacity(1.0),
                 fraction=0.08,
             )
 
-            # Move accepted nodes up to ribbon
+            # Move accepted nodes up to ribbon and replace slot labels
             for i, tok in enumerate(COMMITTED_TOKENS):
-                # Find the key and flat node
                 for key in self._verified_keys:
                     if self._tree.nodes[key].label.text == tok:
                         node = self._flat_node_refs[key]
@@ -781,12 +780,23 @@ class DDTreeVisualExplainer(NarratedScene):
                             node.animate.move_to(target_pos).set_opacity(1.0),
                             fraction=0.12,
                         )
-                        # Turn the ribbon slot green
-                        self._ribbon_slots[i].set_state(TokenState.ACCEPTED)
-                        self._ribbon_slots[i].label.text = tok
+                        # Replace the placeholder slot with a committed token
+                        new_slot = TokenBox(
+                            tok, state=TokenState.ACCEPTED,
+                            width=0.85, font_size=22,
+                        )
+                        new_slot.scale(0.78)
+                        new_slot.move_to(self._ribbon_slots[i])
+                        self.play(
+                            FadeOut(self._ribbon_slots[i]),
+                            FadeIn(new_slot),
+                            FadeOut(node),
+                            run_time=0.4,
+                        )
+                        self._ribbon_slots[i] = new_slot
                         break
 
-            # Add bonus token 'runs'
+            # Add bonus token
             bonus_box = TokenBox(
                 BONUS_TOKEN, state=TokenState.ACTIVE,
                 width=0.85, font_size=22,
@@ -803,8 +813,8 @@ class DDTreeVisualExplainer(NarratedScene):
             # Closing label
             closing = Text(
                 "Speed from proposals. Correctness from the target.",
-                font_size=16, color=COMMITTED_COLOR,
+                font_size=18, color=COMMITTED_COLOR,
             )
             closing.to_edge(DOWN, buff=0.3)
             self.paced(tracker, FadeIn(closing), fraction=0.16)
-            self.wait(min(0.8, tracker.duration * 0.08))
+            self.wait(min(1.0, tracker.duration * 0.10))
