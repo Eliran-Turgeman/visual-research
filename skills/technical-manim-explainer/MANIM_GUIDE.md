@@ -124,6 +124,90 @@ timing so it remains useful for development.
 - decorative animation with no explanatory purpose;
 - narration describing a state before it appears or after it has disappeared.
 
+---
+
+## Visual art direction
+
+These principles govern the cinematic visual identity of every explainer.  Use
+the design system in `manim_lib.theme`, `manim_lib.focus`, and
+`manim_lib.composition` to implement them consistently.
+
+### Stage and background
+
+Use the near-black background (`theme.BACKGROUND`, `#1a1a2e`).  The dark stage
+maximizes perceived contrast and lets color carry meaning instead of decoration.
+Do not use white, gray, or colored backgrounds.
+
+### Semantic color roles
+
+Every color on screen must serve a semantic purpose.  Use the five role colors
+from `manim_lib.theme`:
+
+| Role        | When to use                                     |
+|-------------|--------------------------------------------------|
+| `PRIMARY`   | Main subject, active element, current step       |
+| `ACCENT`    | Secondary callout, supporting highlight, annotation |
+| `SUCCESS`   | Accepted, correct, verified                      |
+| `DANGER`    | Rejected, error, pruned, failed                  |
+| `NEUTRAL`   | Inactive context, background structure, borders  |
+
+Each role has `.base`, `.light`, and `.dim` tonal variants.  Use `.light` for
+emphasis on the dark stage, `.dim` for de-emphasized but still-visible context,
+and `.base` for the default weight.  Never introduce ad-hoc hex colors—if a new
+semantic need arises, extend the theme.
+
+### Typography hierarchy
+
+Use exactly three levels—heading, body, caption—from `theme.TYPOGRAPHY`.  A
+heading introduces a concept; body text is the primary explanatory level;
+captions annotate, label, or provide secondary detail.  Do not create
+intermediate sizes.  Prefer `Text` for labels and `MathTex` for mathematics;
+avoid `Tex` prose unless LaTeX formatting is genuinely needed.
+
+### Stroke hierarchy
+
+Use `theme.STROKES`: heavy for primary structure, normal for secondary edges,
+hairline for guides and connectors.  Consistent stroke weight communicates
+visual depth without shadow effects.
+
+### Spacing vocabulary
+
+Use the five named constants from `theme.SPACING` (`xs`, `sm`, `md`, `lg`,
+`xl`) for all `buff`, gap, and margin values.  Consistent spacing replaces
+magic numbers and makes layouts predictable across scenes.
+
+### Center-weighted composition
+
+Default to a single evolving picture centered on the frame.  Use
+`composition.center_group()` to stack elements vertically or
+`composition.side_by_side()` for explicit comparisons.  Use
+`composition.place_at_safe_edge()` instead of `.to_edge()` to respect safe
+margins.  Avoid multi-panel grid layouts unless genuinely comparing two or more
+independent things.
+
+### When panels are justified
+
+Panels (titled rectangular regions) are acceptable only when the scene genuinely
+requires comparison of two or more independent structures—never to organize
+sequential content.  If you can present the content as one evolving picture,
+do that instead.
+
+### Focus and dimming
+
+Use `focus.focus_on()` to semantically dim context and `focus.restore_focus()`
+afterward.  Use `composition.dim_overlay()` only for full-frame context push
+(such as temporarily bringing a detail to the foreground).  Never dim for
+decoration.
+
+### The "earn your place" rule
+
+Every visible element—every label, every border, every color, every animation
+step—must earn its place.  Ask: "Does removing this hurt understanding?"  If
+not, remove it.  Decorative animation, ornamental borders, gratuitous panels,
+and redundant labels all fail this test.
+
+---
+
 ## Hard gates before calling a draft done
 
 These are non-negotiable checks, not suggestions. A scene fails review if any

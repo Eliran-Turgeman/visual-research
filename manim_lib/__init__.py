@@ -1,7 +1,15 @@
 """Reusable Manim primitives for narrated technical explainers."""
 
+from .composition import (
+    center_group,
+    dim_overlay,
+    place_at_safe_edge,
+    safe_frame_rect,
+    side_by_side,
+)
 from .computation import Computation, Operand
 from .equations import EquationSteps
+from .focus import FocusContext, focus_on, restore_focus
 from .layout import (
     assert_no_overlaps,
     assert_within_safe_frame,
@@ -14,22 +22,62 @@ from .layout import (
     within_safe_frame,
 )
 from .matrices import LabeledMatrix
+from .theme import (
+    ACCENT,
+    BACKGROUND,
+    DANGER,
+    DIM_OPACITY,
+    FOCUS_RESTORE_OPACITY,
+    NEUTRAL,
+    PRIMARY,
+    ROLE_COLORS,
+    SAFE_MARGINS,
+    SPACING,
+    STROKES,
+    SUCCESS,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    TYPOGRAPHY,
+)
 from .timelines import EventTimeline
 from .tokens import CandidateToken, TokenBox, TokenSequence, TokenState
 from .trees import StableTree, TreeNode
 
 __all__ = [
-    "CandidateToken",
+    # Theme
+    "ACCENT",
+    "BACKGROUND",
+    "DANGER",
+    "DIM_OPACITY",
+    "FOCUS_RESTORE_OPACITY",
+    "NEUTRAL",
+    "PRIMARY",
+    "ROLE_COLORS",
+    "SAFE_MARGINS",
+    "SPACING",
+    "STROKES",
+    "SUCCESS",
+    "TEXT_MUTED",
+    "TEXT_PRIMARY",
+    "TEXT_SECONDARY",
+    "TYPOGRAPHY",
+    # Focus
+    "FocusContext",
+    "focus_on",
+    "restore_focus",
+    # Composition
+    "center_group",
+    "dim_overlay",
+    "place_at_safe_edge",
+    "safe_frame_rect",
+    "side_by_side",
+    # Computation
     "Computation",
-    "EquationSteps",
-    "EventTimeline",
-    "LabeledMatrix",
     "Operand",
-    "StableTree",
-    "TokenBox",
-    "TokenSequence",
-    "TokenState",
-    "TreeNode",
+    # Equations
+    "EquationSteps",
+    # Layout
     "assert_no_overlaps",
     "assert_within_safe_frame",
     "bounding_box",
@@ -39,4 +87,13 @@ __all__ = [
     "find_overlaps",
     "mobjects_overlap",
     "within_safe_frame",
+    # Components
+    "CandidateToken",
+    "EventTimeline",
+    "LabeledMatrix",
+    "StableTree",
+    "TokenBox",
+    "TokenSequence",
+    "TokenState",
+    "TreeNode",
 ]

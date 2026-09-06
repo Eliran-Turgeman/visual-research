@@ -4,6 +4,10 @@ from enum import Enum
 
 from manim import BLUE, GRAY, GREEN, RED, YELLOW, RoundedRectangle, Text, VGroup
 
+# Backward-compatible: these direct manim color imports are retained so
+# existing code referencing STATE_COLORS keeps working.  New scenes should
+# prefer manim_lib.theme role colors.
+
 
 class TokenState(str, Enum):
     """Visual states shared by token-based explainers."""

@@ -5,8 +5,6 @@ import os
 from types import SimpleNamespace
 
 from manim import (
-    BLUE,
-    GREEN,
     AnimationGroup,
     Create,
     FadeIn,
@@ -19,7 +17,23 @@ from manim import (
     Write,
 )
 
-from manim_lib import CandidateToken, TokenBox, TokenSequence, TokenState
+from manim_lib import (
+    CandidateToken,
+    TokenBox,
+    TokenSequence,
+    TokenState,
+    # Design system
+    BACKGROUND,
+    PRIMARY,
+    SUCCESS,
+    TYPOGRAPHY,
+    SPACING,
+    SAFE_MARGINS,
+    center_group,
+    place_at_safe_edge,
+    focus_on,
+    restore_focus,
+)
 
 try:
     from manim_voiceover import VoiceoverScene
@@ -32,6 +46,8 @@ class MinimalExplainer(VoiceoverScene):
 
     def setup(self):
         super().setup()
+        # Apply themed background
+        self.camera.background_color = BACKGROUND
         self._voiceover_enabled = False
         default_provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "none"
         provider = os.getenv("MANIM_TTS_PROVIDER", default_provider).lower()
@@ -93,9 +109,16 @@ class MinimalExplainer(VoiceoverScene):
             yield SimpleNamespace(duration=duration)
 
     def construct(self):
-        title = Text("Speculate, then verify", font_size=40).to_edge(UP)
+        # ── Themed heading ────────────────────────────────────────────
+        title = Text(
+            "Speculate, then verify",
+            font_size=TYPOGRAPHY.heading.font_size,
+            color=TYPOGRAPHY.heading.color,
+        )
+        place_at_safe_edge(title, UP, buff=SPACING.sm)
+
         context = TokenSequence("The", "model")
-        context.next_to(title, direction=(0, -1, 0), buff=0.65)
+        context.next_to(title, direction=(0, -1, 0), buff=SPACING.md)
 
         with self.narrate(
             "Start with a fixed context. A small draft model proposes several "
@@ -110,15 +133,19 @@ class MinimalExplainer(VoiceoverScene):
                 run_time=min(1.4, tracker.duration * 0.35),
             )
 
+        # ── Draft proposals with semantic color ───────────────────────
         candidates = VGroup(
             CandidateToken("can", 0.72),
             CandidateToken("run", 0.64),
             CandidateToken("fast", 0.51),
-        ).arrange(buff=0.3)
-        candidates.next_to(context, direction=(0, -1, 0), buff=0.8)
-        draft_label = Text("draft proposals", font_size=24, color=BLUE).next_to(
-            candidates, direction=(0, -1, 0), buff=0.25
-        )
+        ).arrange(buff=SPACING.sm)
+        candidates.next_to(context, direction=(0, -1, 0), buff=SPACING.lg)
+
+        draft_label = Text(
+            "draft proposals",
+            font_size=TYPOGRAPHY.caption.font_size,
+            color=PRIMARY.base,
+        ).next_to(candidates, direction=(0, -1, 0), buff=SPACING.xs)
 
         with self.narrate(
             "Here the draft proposes can, run, and fast. The numbers are toy "
@@ -132,6 +159,15 @@ class MinimalExplainer(VoiceoverScene):
                 run_time=min(2.2, tracker.duration * 0.65),
             )
 
+        # ── Focus on candidates, dim context ──────────────────────────
+        all_context = [title, context, draft_label]
+        dim_anims, focus_ctx = focus_on(
+            candidates, context=[*all_context, candidates],
+        )
+        if dim_anims:
+            self.play(*dim_anims, run_time=0.4)
+
+        # ── Verification with semantic success color ──────────────────
         accepted = TokenSequence()
         accepted.move_to(candidates)
         accepted_boxes = [
@@ -142,8 +178,12 @@ class MinimalExplainer(VoiceoverScene):
         accepted.add(*accepted_boxes)
         for index, box in enumerate(accepted_boxes):
             box.move_to(candidates[index].token_box)
-        verified_label = Text("verified in one target-model pass", font_size=24)
-        verified_label.set_color(GREEN).move_to(draft_label)
+
+        verified_label = Text(
+            "verified in one target-model pass",
+            font_size=TYPOGRAPHY.caption.font_size,
+            color=SUCCESS.base,
+        ).move_to(draft_label)
 
         with self.narrate(
             "The large model verifies all three positions together. In this "
@@ -165,4 +205,10 @@ class MinimalExplainer(VoiceoverScene):
                 ),
                 run_time=min(2.4, tracker.duration * 0.55),
             )
+
+            # Restore context visibility
+            restore_anims = restore_focus(all_context, focus_ctx)
+            if restore_anims:
+                self.play(*restore_anims, run_time=0.4)
+
             self.wait(max(0.4, tracker.duration * 0.25))
