@@ -10,6 +10,7 @@ from manim import Animation, Circle, Rectangle
 
 from manim_lib.continuity import (
     grow_branch,
+    identity_rearrange,
     map_ancestry_to_mask,
     map_tree_to_sequence,
     restore_semantic_focus,
@@ -318,3 +319,43 @@ class TestSectionTransition:
         anchor = Circle(radius=0.3)
         anims = section_transition(anchor, [anchor])
         assert anims == []
+
+
+# ── identity_rearrange ────────────────────────────────────────────────────
+
+
+class TestIdentityRearrange:
+    def test_returns_correct_number_of_animations(self):
+        mobs = [Circle(radius=0.3) for _ in range(3)]
+        dsts = [(i, 0, 0) for i in range(3)]
+        anims = identity_rearrange(mobs, dsts)
+        assert len(anims) == 3
+
+    def test_empty_inputs(self):
+        assert identity_rearrange([], []) == []
+
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(ValueError, match="equal length"):
+            identity_rearrange([Circle()], [(0, 0, 0), (1, 0, 0)])
+
+    def test_mobject_destinations(self):
+        src = Circle(radius=0.3)
+        dst = Rectangle(width=1, height=1).move_to((3, 2, 0))
+        anims = identity_rearrange([src], [dst])
+        assert len(anims) == 1
+
+    def test_ndarray_destinations(self):
+        src = Circle(radius=0.3)
+        anims = identity_rearrange(
+            [src], [np.array([1.0, 2.0, 0.0])]
+        )
+        assert len(anims) == 1
+
+    def test_preserves_identity(self):
+        """The returned animations reference the original objects."""
+        src = Circle(radius=0.3)
+        original_id = id(src)
+        anims = identity_rearrange([src], [(5, 5, 0)])
+        assert len(anims) == 1
+        # The animation's mobject is the original source
+        assert id(anims[0].mobject) == original_id

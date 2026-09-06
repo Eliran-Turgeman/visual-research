@@ -10,6 +10,7 @@ from .composition import (
 from .computation import Computation, Operand
 from .continuity import (
     grow_branch,
+    identity_rearrange,
     map_ancestry_to_mask,
     map_tree_to_sequence,
     restore_semantic_focus,
@@ -54,7 +55,9 @@ from .theme import (
     TYPOGRAPHY,
 )
 from .timelines import EventTimeline
+from .narrated_scene import NarratedScene
 from .tokens import CandidateToken, TokenBox, TokenSequence, TokenState
+
 from .trees import StableTree, TreeNode
 
 __all__ = [
@@ -90,6 +93,7 @@ __all__ = [
     "Operand",
     # Continuity
     "grow_branch",
+    "identity_rearrange",
     "map_ancestry_to_mask",
     "map_tree_to_sequence",
     "restore_semantic_focus",
@@ -115,6 +119,7 @@ __all__ = [
     "CandidateToken",
     "EventTimeline",
     "LabeledMatrix",
+    "NarratedScene",
     "StableTree",
     "TokenBox",
     "TokenSequence",

@@ -268,8 +268,45 @@ def section_transition(
     return anims
 
 
+# ---------------------------------------------------------------------------
+# Identity-preserving rearrangement
+# ---------------------------------------------------------------------------
+
+
+def identity_rearrange(
+    sources: Sequence[Mobject],
+    destinations: Sequence[Mobject | np.ndarray | tuple],
+) -> list[Animation]:
+    """Return animations that move each *source* to its *destination* position.
+
+    Unlike :func:`map_tree_to_sequence` (which creates ``TransformFromCopy``
+    duplicates), this performs a genuine identity-preserving move: the same
+    Python objects animate to new positions, so every later reference to them
+    still reaches the on-screen mobject.
+
+    *destinations* may be ``Mobject`` instances (moved to their center),
+    ``ndarray`` / tuple coordinates, or any mix of both.
+    """
+    if len(sources) != len(destinations):
+        raise ValueError(
+            f"sources ({len(sources)}) and destinations "
+            f"({len(destinations)}) must have equal length"
+        )
+    if not sources:
+        return []
+    anims: list[Animation] = []
+    for src, dst in zip(sources, destinations):
+        if isinstance(dst, Mobject):
+            target = dst.get_center()
+        else:
+            target = np.array(dst, dtype=float)
+        anims.append(src.animate.move_to(target))
+    return anims
+
+
 __all__ = [
     "grow_branch",
+    "identity_rearrange",
     "map_ancestry_to_mask",
     "map_tree_to_sequence",
     "restore_semantic_focus",
