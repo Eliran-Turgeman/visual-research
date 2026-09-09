@@ -134,6 +134,22 @@ $env:MANIM_QUALITY = "-ql"
 
 Manim writes output below `media/videos/`.
 
+## Examples
+
+Names describe the subject or the component being demonstrated.
+
+| Example | What it demonstrates |
+|---|---|
+| [`minimal`](examples/minimal/) | A minimal narrated scene |
+| [`continuity`](examples/continuity/) | Object identity across visual transformations |
+| [`visual_components`](examples/visual_components/) | Token states, probability bars, trees, and matrices in one reference frame |
+| [`speculative_decoding_flow`](examples/speculative_decoding_flow/) | Model and token flow for block drafting and batched verification |
+| [`speculative_decoding_timeline`](examples/speculative_decoding_timeline/) | Sequential drafting overhead and batched verification on a shared time scale |
+| [`dflash_visual`](examples/dflash_visual/) | DFlash block-diffusion drafting |
+| [`ddtree_visual`](examples/ddtree_visual/) | DDTree construction and verification |
+| [`ddtree_dflash`](examples/ddtree_dflash/) | DFlash and DDTree with worked algorithm examples |
+| [`ddtree_full`](examples/ddtree_full/) | The complete MAI-narrated DDTree episode |
+
 ## Use the skill from an agent
 
 Tell the agent explicitly to read the skill and apply it to the source material:
@@ -174,10 +190,10 @@ The shared palette and typography provide cohesion without forcing every
 concept into a rounded box. Shadows, inner borders, and halos are optional,
 not a substitute for scale, meaningful geometry, and causal motion.
 
-`examples/waiting_visible/` demonstrates the approach with a shared-clock
-speculative-decoding sample: three serial target passes versus drafting plus
-one verification pass. A completion bracket makes the saved waiting visible.
-The original `examples/impressive_sample/` is preserved for comparison.
+`examples/speculative_decoding_timeline/` demonstrates the approach with a
+shared-clock comparison: three serial target passes versus drafting plus one
+verification pass. A completion bracket reveals the difference in elapsed time.
+`examples/speculative_decoding_flow/` uses model blocks and token flow instead.
 
 For a complete mechanism-first episode with MAI narration, see
 `examples/ddtree_full/`: DFlash marginals, seven best-first tree selections,
@@ -186,7 +202,7 @@ Run `.\examples\ddtree_full\render.ps1` in PowerShell; it loads the configured
 OpenRouter key from the process or Windows user environment without printing
 it and selects MAI-Voice-2 / Harper explicitly.
 
-Render `examples/style_showcase/scene.py` as a still whenever the shared visual
+Render `examples/visual_components/scene.py` as a still whenever the shared visual
 language changes. It puts the core object families in one frame so hierarchy,
 contrast, spacing, and semantic color can be reviewed together. It is a
 component reference, not the layout template for every explainer.

@@ -16,6 +16,15 @@ Produce a technically correct explanation that helps an engineering audience
 build a useful mental model. Optimize for comprehension, not entertainment.
 Prefer a complete small example to a broad but shallow survey.
 
+## Public example names
+
+Name example directories after the technical subject or demonstrated component,
+using `snake_case`, with matching descriptive `PascalCase` scene classes.
+Use a mechanism or representation suffix to distinguish examples of the same
+subject, such as `speculative_decoding_flow` and `speculative_decoding_timeline`.
+Keep test names, review paths, and render instructions consistent. Avoid
+self-praise, internal demo labels, and slogans as public example identifiers.
+
 ## Required workflow
 
 1. **Inspect the evidence.** Read the relevant paper, code, documentation,

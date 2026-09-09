@@ -3,7 +3,7 @@ r"""Visual reference for the shared technical-object language.
 Render a still while iterating on the design system:
 
     .\.venv\Scripts\python.exe -m manim render -ql -s \
-        examples\style_showcase\scene.py VisualLanguageShowcase
+        examples\visual_components\scene.py VisualComponents
 """
 
 from manim import DOWN, LEFT, RIGHT, UP, Scene, Text, VGroup
@@ -33,7 +33,7 @@ def _caption(text: str) -> Text:
     )
 
 
-class VisualLanguageShowcase(Scene):
+class VisualComponents(Scene):
     """Display the core primitives in one frame for visual review."""
 
     def construct(self):

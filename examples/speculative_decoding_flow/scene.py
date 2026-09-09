@@ -1,4 +1,4 @@
-"""A short, polished visual sample of speculative decoding."""
+"""A model-and-token flow diagram of speculative decoding."""
 
 from pathlib import Path
 
@@ -43,11 +43,11 @@ from manim_lib import (
 )
 
 
-class ImpressiveSample(NarratedScene):
+class SpeculativeDecodingFlow(NarratedScene):
     """Show how speculative decoding converts serial waits into one batch."""
 
-    review_timeline_path = Path("media/review/impressive_sample/timeline.json")
-    external_voiceover_subdir = "impressive_sample_external"
+    review_timeline_path = Path("media/review/speculative_decoding_flow/timeline.json")
+    external_voiceover_subdir = "speculative_decoding_flow_external"
 
     def _model(self, name: str, detail: str, color: str) -> VGroup:
         shadow = RoundedRectangle(

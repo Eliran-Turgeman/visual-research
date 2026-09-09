@@ -1,8 +1,8 @@
-# Waiting has a shape
+# Speculative decoding: latency timeline
 
-A short narrated sample in which a shared time scale, rather than model boxes,
-explains why speculative decoding can make a prefix available sooner.
-The earlier sample in `examples/impressive_sample/` is intentionally unchanged.
+A narrated comparison of autoregressive and speculative decoding on a shared
+time scale. It shows why a prefix can become available sooner even after
+including sequential drafting overhead.
 
 ## Visual argument
 
@@ -50,17 +50,17 @@ From the repository root in PowerShell, use the isolated environment:
 $env:PATH = "$PWD\.venv\Scripts;$env:PATH"
 $env:MANIM_TTS_PROVIDER = "gtts"
 $env:MANIM_QUALITY = "-qh"
-.\scripts\render.ps1 examples\waiting_visible\scene.py WaitingVisible
+.\scripts\render.ps1 examples\speculative_decoding_timeline\scene.py SpeculativeDecodingTimeline
 ```
 
-The result is `media\videos\scene\1080p60\WaitingVisible.mp4`. gTTS requires
+The result is `media\videos\scene\1080p60\SpeculativeDecodingTimeline.mp4`. gTTS requires
 network access; generated speech is cached under `media\voiceovers\`.
 Use `MANIM_TTS_PROVIDER=openrouter` with the configured key for the production
 MAI-Voice-2 / Harper voice. The sample uses gTTS when that key is unavailable;
 this does not change the repository's preferred production provider.
 
 For the rough silent cut, set `MANIM_TTS_PROVIDER=none` and `MANIM_QUALITY=-ql`.
-Output then goes to `media\videos\scene\480p15\WaitingVisible.mp4`.
+Output then goes to `media\videos\scene\480p15\SpeculativeDecodingTimeline.mp4`.
 Keep the rough-cut frame index before rendering again: the scene overwrites its
 review timeline on each run.
 
@@ -75,14 +75,14 @@ close-up scales its continuing mechanism together, not individual labels.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\extract_narration_frames.py `
-  media\videos\scene\1080p60\WaitingVisible.mp4 `
-  media\review\waiting_visible\timeline.json `
-  media\review\waiting_visible\final
+  media\videos\scene\1080p60\SpeculativeDecodingTimeline.mp4 `
+  media\review\speculative_decoding_timeline\timeline.json `
+  media\review\speculative_decoding_timeline\final
 ```
 
 This produces near-start/middle/near-end frames for every narration block.
 Review the continuous motion as well: the first pass must finish before its
 token appears, draft steps must remain sequential, and the verification
 boundary must span all rows at once. The rough cut should convey the
-relationship without its soundtrack. `tests\test_waiting_visible.py` uses the
+relationship without its soundtrack. `tests\test_speculative_decoding_timeline.py` uses the
 scene's real objects to guard the shared scale, identity, and layouts.

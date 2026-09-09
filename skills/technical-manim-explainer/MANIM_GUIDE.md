@@ -273,9 +273,9 @@ Polish cannot rescue a picture that only labels the idea rather than explains
 it. Reuse semantic helpers where appropriate, but do not force a concept into
 the shape of an existing component.
 
-### A reference: making waiting visible
+### Reference: speculative decoding latency
 
-`examples/waiting_visible/scene.py` replaces the model-box flowchart with a
+`examples/speculative_decoding_timeline/scene.py` replaces the model-box flowchart with a
 single shared clock. The close-up shows one target pass completing before a
 token appears. That same picture contracts to reveal a chain of dependent
 passes. Below it, short sequential draft steps feed one target interval

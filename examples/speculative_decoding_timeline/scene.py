@@ -199,7 +199,7 @@ class TokenMark(VGroup):
         return self
 
 
-class WaitingPicture:
+class DecodingTimelinePicture:
     """Scene-local objects shared by the animation and its geometry tests."""
 
     def __init__(self):
@@ -368,11 +368,11 @@ class WaitingPicture:
         return np.array([self.speculative_finish_x, ROW_Y[index], 0])
 
 
-class WaitingVisible(NarratedScene):
+class SpeculativeDecodingTimeline(NarratedScene):
     """From one dependent pass to a shorter all-accepted speculative round."""
 
-    review_timeline_path = Path("media/review/waiting_visible/timeline.json")
-    external_voiceover_subdir = "waiting_visible_external"
+    review_timeline_path = Path("media/review/speculative_decoding_timeline/timeline.json")
+    external_voiceover_subdir = "speculative_decoding_timeline_external"
 
     @contextmanager
     def beat(self, index):
@@ -392,7 +392,7 @@ class WaitingVisible(NarratedScene):
         interval.finish()
 
     def construct(self):
-        p = self.picture = WaitingPicture()
+        p = self.picture = DecodingTimelinePicture()
         first = p.stages[0]
         home = first.get_center().copy()
         first.scale(ZOOM).move_to((0, 0.40, 0))

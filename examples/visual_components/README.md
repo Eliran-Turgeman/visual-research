@@ -1,4 +1,4 @@
-# Visual language showcase
+# Visual components
 
 This still scene is the visual regression reference for the shared technical
 objects. It deliberately places token states, a probability distribution, a
@@ -7,7 +7,7 @@ system can be judged together.
 
 ```powershell
 .\.venv\Scripts\python.exe -m manim render -ql -s `
-  examples\style_showcase\scene.py VisualLanguageShowcase
+  examples\visual_components\scene.py VisualComponents
 ```
 
 Review the result for hierarchy, contrast, label fit, repeated spacing, and

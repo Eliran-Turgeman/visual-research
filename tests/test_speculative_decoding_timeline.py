@@ -1,10 +1,10 @@
-"""Test the geometry and visual semantics used by the actual sample scene."""
+"""Test the geometry and semantics of the speculative decoding timeline."""
 
 import numpy as np
 import pytest
 from manim import tempconfig
 
-from examples.waiting_visible.scene import (
+from examples.speculative_decoding_timeline.scene import (
     NARRATION,
     ROW_Y,
     TIMELINE_LENGTH,
@@ -13,8 +13,8 @@ from examples.waiting_visible.scene import (
     ZOOM,
     TokenMark,
     ToyTiming,
-    WaitingPicture,
-    WaitingVisible,
+    DecodingTimelinePicture,
+    SpeculativeDecodingTimeline,
 )
 from manim_lib import assert_no_overlaps, assert_within_safe_frame
 
@@ -23,7 +23,7 @@ def test_toy_clock_includes_drafting_before_verification():
     assert TIMING.baseline_end == pytest.approx(3.0)
     assert TIMING.draft_end == pytest.approx(0.6)
     assert TIMING.speculative_end == pytest.approx(1.6)
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     assert p.verifier.start_time == p.drafts[-1].end_time
     assert p.verifier.end_time == TIMING.speculative_end
     for previous, current in zip(p.drafts, p.drafts[1:]):
@@ -37,7 +37,7 @@ def test_invalid_toy_durations_raise(value):
 
 
 def test_baseline_and_speculation_use_one_undistorted_time_scale():
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     assert p.baseline.width >= TIMELINE_LENGTH
     assert p.verifier.track.width == pytest.approx(p.baseline_intervals[0].track.width)
     x0 = p.clock.point_at(0)[0]
@@ -51,7 +51,7 @@ def test_baseline_and_speculation_use_one_undistorted_time_scale():
 
 
 def test_progress_tracks_current_geometry_after_closeup_and_restore():
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     interval = p.baseline_intervals[0]
     interval.scale(ZOOM).shift(np.array([2.0, -1.0, 0.0]))
     ids = tuple(id(part) for part in interval)
@@ -80,7 +80,7 @@ def test_acceptance_preserves_marker_and_label_identity():
 
 
 def test_opening_and_final_layout_fit_without_shrinking_the_whole_scene():
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     opening = p.stages[0].copy().scale(ZOOM).move_to((0, 0.4, 0))
     assert_within_safe_frame(opening, margin=0.4, label="opening")
     for index, candidate in enumerate(p.candidates):
@@ -105,7 +105,7 @@ def test_opening_and_final_layout_fit_without_shrinking_the_whole_scene():
 
 
 def test_draft_markers_and_words_do_not_collide_when_fanned_into_rows():
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     for index, candidate in enumerate(p.candidates):
         candidate.shift(p.candidate_row_position(index) - candidate.dot.get_center())
         assert_within_safe_frame(candidate, margin=0.35)
@@ -114,7 +114,7 @@ def test_draft_markers_and_words_do_not_collide_when_fanned_into_rows():
 
 
 def test_earlier_drafts_wait_for_the_shared_target_pass():
-    p = WaitingPicture()
+    p = DecodingTimelinePicture()
     assert len(p.lead_ins) == len(WORDS) - 1
     for index, line in enumerate(p.lead_ins):
         assert line.get_start() == pytest.approx(p.candidate_row_position(index))
@@ -133,7 +133,7 @@ def test_scene_finishes_with_the_same_objects_at_the_expected_completion_points(
 ):
     monkeypatch.setenv("MANIM_TTS_PROVIDER", "none")
     with tempconfig({"dry_run": True, "skip_animations": True, "quality": "low_quality"}):
-        scene = WaitingVisible()
+        scene = SpeculativeDecodingTimeline()
         scene.review_timeline_path = tmp_path / "timeline.json"
         scene.render()
     p = scene.picture
