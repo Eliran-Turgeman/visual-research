@@ -45,7 +45,7 @@ DFlashVisualExplainer = _scene_mod.DFlashVisualExplainer
 from manim_lib.layout import within_safe_frame, assert_no_overlaps, bounding_box
 from manim_lib.tokens import TokenBox, TokenState
 from manim_lib.probability import ProbabilityDistribution
-from manim import VGroup, RIGHT, RoundedRectangle, Text
+from manim import VGroup, RIGHT, UP, RoundedRectangle, Text
 
 
 # ---------------------------------------------------------------
@@ -167,7 +167,7 @@ class TestDistributionLayout:
                 font_size=16,
             )
             dists.append(d)
-        group = VGroup(*dists).arrange(RIGHT, buff=1.2, aligned_edge=True)
+        group = VGroup(*dists).arrange(RIGHT, buff=1.2, aligned_edge=UP)
         group.move_to((0, -1.8, 0))
         return dists, group
 

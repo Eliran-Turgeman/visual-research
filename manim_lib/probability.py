@@ -18,13 +18,22 @@ from manim import (
     RIGHT,
     Animation,
     Mobject,
-    Rectangle,
+    RoundedRectangle,
     Text,
     TransformFromCopy,
     VGroup,
 )
 
-from .theme import ACCENT, PRIMARY, SPACING, STROKES, TEXT_PRIMARY, TEXT_SECONDARY
+from .theme import (
+    ACCENT,
+    NEUTRAL,
+    PRIMARY,
+    SPACING,
+    STROKES,
+    SURFACE,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
 
 
 class DistributionEntry(VGroup):
@@ -46,19 +55,31 @@ class DistributionEntry(VGroup):
         bar_color: str = PRIMARY.base,
     ) -> None:
         super().__init__()
+        if not 0 <= value <= 1:
+            raise ValueError("distribution values must be between 0 and 1")
         self.key = key
         self.token_text = token
         self.value = value
 
         self.token_label = Text(token, font_size=font_size, color=TEXT_PRIMARY)
         bar_width = max(max_bar_width * value, 0.05)
-        self.bar = Rectangle(
+        self.track = RoundedRectangle(
+            width=max_bar_width,
+            height=bar_height,
+            corner_radius=min(0.08, bar_height * 0.35),
+            fill_color=SURFACE,
+            fill_opacity=0.95,
+            stroke_color=NEUTRAL.dim,
+            stroke_width=STROKES.hairline.width,
+        )
+        self.bar = RoundedRectangle(
             width=bar_width,
             height=bar_height,
+            corner_radius=min(0.08, bar_height * 0.35),
             fill_color=bar_color,
-            fill_opacity=0.6,
-            stroke_color=bar_color,
-            stroke_width=STROKES.normal.width,
+            fill_opacity=0.78,
+            stroke_color=PRIMARY.light if bar_color == PRIMARY.base else bar_color,
+            stroke_width=STROKES.hairline.width,
         )
         self.value_label = Text(
             f"{value:.2f}",
@@ -66,10 +87,11 @@ class DistributionEntry(VGroup):
             color=TEXT_SECONDARY,
         )
 
-        self.bar.next_to(self.token_label, RIGHT, buff=SPACING.sm)
-        self.value_label.next_to(self.bar, RIGHT, buff=SPACING.xs)
+        self.track.next_to(self.token_label, RIGHT, buff=SPACING.sm)
+        self.bar.move_to(self.track).align_to(self.track, LEFT)
+        self.value_label.next_to(self.track, RIGHT, buff=SPACING.xs)
 
-        self.add(self.token_label, self.bar, self.value_label)
+        self.add(self.token_label, self.track, self.bar, self.value_label)
 
     @property
     def token_anchor(self) -> np.ndarray:
@@ -91,7 +113,8 @@ class DistributionEntry(VGroup):
     ) -> "DistributionEntry":
         """Visually emphasize this entry's bar."""
         self.bar.set_fill(color, opacity=opacity)
-        self.bar.set_stroke(color)
+        self.bar.set_stroke(ACCENT.light if color == ACCENT.base else color)
+        self.value_label.set_color(ACCENT.light)
         return self
 
 

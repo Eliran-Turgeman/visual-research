@@ -2,7 +2,18 @@
 
 from collections.abc import Iterable
 
-from manim import BLUE, DOWN, LEFT, RIGHT, UP, Rectangle, Text, VGroup
+from manim import DOWN, LEFT, RIGHT, UP, RoundedRectangle, Text, VGroup
+
+from .theme import (
+    ACCENT,
+    NEUTRAL,
+    PRIMARY,
+    SPACING,
+    STROKES,
+    SURFACE,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
 
 
 class LabeledMatrix(VGroup):
@@ -16,6 +27,7 @@ class LabeledMatrix(VGroup):
         column_labels: list[str] | None = None,
         cell_width: float = 0.75,
         cell_height: float = 0.55,
+        cell_gap: float = 0.035,
     ) -> None:
         if not values or not values[0]:
             raise ValueError("Matrix values must not be empty")
@@ -34,8 +46,18 @@ class LabeledMatrix(VGroup):
         for row_index, row in enumerate(values):
             cells = []
             for column_index, value in enumerate(row):
-                box = Rectangle(width=cell_width, height=cell_height)
-                text = Text(str(value), font_size=22).move_to(box)
+                box = RoundedRectangle(
+                    width=cell_width - cell_gap,
+                    height=cell_height - cell_gap,
+                    corner_radius=min(0.07, cell_height * 0.14),
+                    stroke_color=NEUTRAL.dim,
+                    stroke_width=STROKES.hairline.width,
+                    fill_color=SURFACE,
+                    fill_opacity=0.94,
+                )
+                text = Text(
+                    str(value), font_size=22, color=TEXT_PRIMARY
+                ).move_to(box)
                 cell = VGroup(box, text).move_to(
                     (
                         column_index * cell_width,
@@ -49,12 +71,16 @@ class LabeledMatrix(VGroup):
 
         if row_labels:
             for label, row in zip(row_labels, self.cells):
-                text = Text(label, font_size=20).next_to(row[0], LEFT, buff=0.18)
+                text = Text(
+                    label, font_size=20, color=TEXT_SECONDARY
+                ).next_to(row[0], LEFT, buff=SPACING.xs)
                 self.row_label_mobjects.append(text)
                 self.add(text)
         if column_labels:
             for label, cell in zip(column_labels, self.cells[0]):
-                text = Text(label, font_size=20).next_to(cell, UP, buff=0.18)
+                text = Text(
+                    label, font_size=20, color=TEXT_SECONDARY
+                ).next_to(cell, UP, buff=SPACING.xs)
                 self.column_label_mobjects.append(text)
                 self.add(text)
         self.center()
@@ -67,17 +93,16 @@ class LabeledMatrix(VGroup):
         self,
         coordinates: Iterable[tuple[int, int]],
         *,
-        color=BLUE,
+        color=PRIMARY.base,
         opacity: float = 0.35,
     ) -> VGroup:
         """Return overlays for selected cells; add or animate the returned group."""
         overlays = VGroup()
         for row, column in coordinates:
             overlays.add(
-                self.cells[row][column][0]
-                .copy()
-                .set_stroke(color, width=3)
-                .set_fill(color, opacity=opacity)
+                self.cells[row][column][0].copy().set_stroke(
+                    color, width=STROKES.heavy.width
+                ).set_fill(color, opacity=opacity)
             )
         return overlays
 
@@ -95,4 +120,6 @@ class LabeledMatrix(VGroup):
 
     def shape_label(self, text: str, *, side=RIGHT) -> Text:
         """Create a shape annotation positioned beside the matrix."""
-        return Text(text, font_size=20).next_to(self, side, buff=0.25)
+        return Text(
+            text, font_size=20, color=ACCENT.light
+        ).next_to(self, side, buff=SPACING.sm)

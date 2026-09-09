@@ -12,9 +12,12 @@ from manim_lib.theme import (
     PRIMARY,
     ROLE_COLORS,
     SAFE_MARGINS,
+    SHADOW,
     SPACING,
     STROKES,
     SUCCESS,
+    SURFACE,
+    SURFACE_ELEVATED,
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
@@ -49,6 +52,11 @@ class TestThemePalette:
 
     def test_role_colors_map_contains_all_roles(self):
         assert set(ROLE_COLORS.keys()) == {"primary", "accent", "success", "danger", "neutral"}
+
+    def test_surfaces_are_distinct_from_stage_and_text(self):
+        assert BACKGROUND != SURFACE != SURFACE_ELEVATED
+        assert SHADOW != BACKGROUND
+        assert SURFACE_ELEVATED != TEXT_PRIMARY
 
 
 class TestThemeTypography:
@@ -120,6 +128,23 @@ class TestFocus:
         restore_anims = restore_focus([a, b, c], ctx)
         # b and c were dimmed (a was target), so 2 restore animations
         assert len(restore_anims) == 2
+
+    def test_restore_preserves_layered_child_opacities(self):
+        target = Circle(radius=0.3)
+        fill = Rectangle(width=1, height=1).set_fill(opacity=0.7)
+        outline = Rectangle(width=1, height=1).set_fill(opacity=0).set_stroke(
+            opacity=0.25
+        )
+        layered = VGroup(fill, outline)
+        _, ctx = focus_on(target, context=[layered], dim_opacity=0.1)
+        restore_anims = restore_focus([layered], ctx)
+
+        restore_anims[0].begin()
+        restore_anims[0].finish()
+
+        assert fill.get_fill_opacity() == pytest.approx(0.7)
+        assert outline.get_fill_opacity() == pytest.approx(0.0)
+        assert outline.get_stroke_opacity() == pytest.approx(0.25)
 
 
 # ── Composition ───────────────────────────────────────────────────────────

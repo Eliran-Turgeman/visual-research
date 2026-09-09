@@ -88,7 +88,7 @@ COMMITTED_COLOR = SUCCESS.base
 REJECTED_COLOR = DANGER.base
 TARGET_COLOR = ACCENT.base
 DRAFT_COLOR = PRIMARY.base
-BONUS_COLOR = "#e8d44d"
+BONUS_COLOR = ACCENT.light
 
 REVIEW_TIMELINE_PATH = Path("media/review/dflash_visual/timeline.json")
 

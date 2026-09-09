@@ -2,6 +2,8 @@
 
 from manim import MathTex, TransformMatchingTex
 
+from .theme import TEXT_PRIMARY
+
 
 class EquationSteps:
     """Build matching equations and transformations between adjacent steps."""
@@ -9,7 +11,10 @@ class EquationSteps:
     def __init__(self, *steps: str, font_size: float = 44) -> None:
         if not steps:
             raise ValueError("At least one equation step is required")
-        self.equations = [MathTex(step, font_size=font_size) for step in steps]
+        self.equations = [
+            MathTex(step, font_size=font_size, color=TEXT_PRIMARY)
+            for step in steps
+        ]
 
     @property
     def first(self) -> MathTex:

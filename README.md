@@ -20,8 +20,12 @@ Agent:
 -> reads the technical explainer skill
 -> consults the Manim guide
 -> reads source material
--> storyboards
--> writes Manim + narration
+-> designs the final visual discovery
+-> sketches opening, mechanism, and payoff
+-> storyboards cause and effect
+-> writes rough Manim
+-> renders a rough silent animation
+-> refines the picture and synchronizes narration
 -> renders
 -> inspects
 -> fixes
@@ -157,3 +161,37 @@ semantics and API recur across explainers. Keep promoted components small:
 - preserve Manim objects so scenes can animate them directly.
 
 Do not turn `manim_lib` into a generic graph, slide, or agent framework.
+
+## Visual language
+
+Start with the picture that explains the mechanism, not the component library.
+The final relationship should be visible before a caption names it. Define
+what each shape, position, color, and motion means; then reuse `TokenBox`,
+`TreeNode`, `LabeledMatrix`, or `ProbabilityDistribution` where their semantics
+fit. Keep new representations scene-local until they recur.
+
+The shared palette and typography provide cohesion without forcing every
+concept into a rounded box. Shadows, inner borders, and halos are optional,
+not a substitute for scale, meaningful geometry, and causal motion.
+
+`examples/waiting_visible/` demonstrates the approach with a shared-clock
+speculative-decoding sample: three serial target passes versus drafting plus
+one verification pass. A completion bracket makes the saved waiting visible.
+The original `examples/impressive_sample/` is preserved for comparison.
+
+For a complete mechanism-first episode with MAI narration, see
+`examples/ddtree_full/`: DFlash marginals, seven best-first tree selections,
+flattening, ancestor-only attention, and a target-driven output walk.
+Run `.\examples\ddtree_full\render.ps1` in PowerShell; it loads the configured
+OpenRouter key from the process or Windows user environment without printing
+it and selects MAI-Voice-2 / Harper explicitly.
+
+Render `examples/style_showcase/scene.py` as a still whenever the shared visual
+language changes. It puts the core object families in one frame so hierarchy,
+contrast, spacing, and semantic color can be reviewed together. It is a
+component reference, not the layout template for every explainer.
+
+The goal is not to copy another creator's assets. It is to apply the strongest
+ideas behind visual-first mathematical explanation: preserve object identity,
+construct ideas progressively, let color carry meaning, and give every motion
+a teaching purpose.

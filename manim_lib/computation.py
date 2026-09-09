@@ -13,9 +13,11 @@ remains free to choose how and when to animate them (``Write``, ``FadeIn``,
 """
 
 from dataclasses import dataclass
-from math import prod
+from math import isclose, prod
 
 from manim import MathTex, Text
+
+from .theme import ACCENT, TEXT_PRIMARY, TEXT_SECONDARY
 
 
 @dataclass(frozen=True)
@@ -88,21 +90,29 @@ class Computation:
         return text
 
     def build_equation(self, *, font_size: float = 30, result_color=None) -> MathTex:
-        """Build a part-indexed equation: operands, operator(s), '=', result.
+        """Build operands, operators, a relation, and the displayed result.
 
         Use :meth:`operand_term` and :meth:`result_term` to reference the
-        individual parts of the returned mobject.
+        individual parts of the returned mobject. Rounded results use an
+        approximation sign instead of asserting false numerical equality.
         """
         parts: list[str] = []
         for index, operand in enumerate(self.operands):
             if index:
                 parts.append(self.operator)
             parts.append(operand.display)
-        parts.append("=")
+        parts.append(
+            "=" if isclose(
+                self.exact_result, float(self.result_display),
+                rel_tol=1e-12, abs_tol=1e-12,
+            ) else r"\approx"
+        )
         parts.append(self.result_display)
-        equation = MathTex(*parts, font_size=font_size)
-        if result_color is not None:
-            equation[-1].set_color(result_color)
+        equation = MathTex(*parts, font_size=font_size, color=TEXT_PRIMARY)
+        equation[-1].set_color(result_color or ACCENT.light)
+        for index in range(1, len(parts) - 2, 2):
+            equation[index].set_color(TEXT_SECONDARY)
+        equation[-2].set_color(TEXT_SECONDARY)
         return equation
 
     def operand_term(self, equation: MathTex, index: int):
@@ -119,7 +129,5 @@ class Computation:
         """Build the interpretation label, or return ``None`` when there is none."""
         if self.interpretation is None:
             return None
-        kwargs = {"font_size": font_size}
-        if color is not None:
-            kwargs["color"] = color
+        kwargs = {"font_size": font_size, "color": color or TEXT_SECONDARY}
         return Text(self.interpretation, **kwargs)

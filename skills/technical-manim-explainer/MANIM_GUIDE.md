@@ -56,7 +56,10 @@ proposal, verification, acceptance, and rejection.
 
 ## Token sequences
 
-- Draw tokens as fixed-height boxes with text centered inside.
+- For a token ribbon, use fixed-height boxes with text centered inside. When
+  tokens are events on a timeline, use labeled markers instead: their position
+  communicates availability. Choose the representation for the explanation,
+  not because every token must be a box.
 - Keep sequence order in one direction and use stable spacing.
 - Distinguish states consistently: neutral context, speculative candidate,
   accepted token, rejected token, and current focus.
@@ -243,11 +246,71 @@ These principles govern the cinematic visual identity of every explainer.  Use
 the design system in `manim_lib.theme`, `manim_lib.focus`, and
 `manim_lib.composition` to implement them consistently.
 
+### Build a visual grammar, not decorated slides
+
+The aesthetic target is a crafted visual explanation: abstract ideas should
+feel like tangible objects with consistent material, weight, and behavior.
+Beauty comes from clarity, rhythm, and transformation—not from adding more
+panels, labels, gradients, or camera moves.
+
+Before implementing a scene, define its small visual vocabulary:
+
+- the relationship the final picture must reveal without a headline;
+- one hero representation that carries the mechanism;
+- only the supporting object types needed to make that relationship visible;
+- one visual treatment for inactive context;
+- one treatment for the current operation;
+- one treatment each for accepted and rejected outcomes when needed.
+
+Reuse those exact treatments throughout the scene. A token must not look like
+a plain rectangle in one beat and a glossy card in the next. A probability
+must not alternate between text, a bar, and an arbitrary badge unless the
+transition itself explains that change of representation.
+
+Design the payoff before choosing library components. Sketch the opening,
+mechanism, and payoff compositions; then render a rough silent animation.
+Polish cannot rescue a picture that only labels the idea rather than explains
+it. Reuse semantic helpers where appropriate, but do not force a concept into
+the shape of an existing component.
+
+### A reference: making waiting visible
+
+`examples/waiting_visible/scene.py` replaces the model-box flowchart with a
+single shared clock. The close-up shows one target pass completing before a
+token appears. That same picture contracts to reveal a chain of dependent
+passes. Below it, short sequential draft steps feed one target interval
+spanning all proposed positions. The same outlined token markers become solid
+at completion; an endpoint bracket reveals the saved time before a caption.
+
+The representation contract is explicit:
+
+| Visual property | Meaning |
+|---|---|
+| Horizontal distance | Illustrative elapsed time, identical scale in both lanes |
+| Width of a work interval | Duration, including drafting overhead |
+| Moving boundary | Progress of the current operation |
+| Outline / solid marker | Proposed / accepted token |
+| Vertically separated verification rows | Token positions evaluated in one pass, not serial passes |
+| Completion guides and bracket | Difference between prefix availability times |
+
+Do not mistake screen animation duration for measured algorithm latency.
+Camera reframing and explanatory holds are presentation time; the shared
+horizontal geometry represents the declared toy cost model. Keep standard
+speculative drafting sequential unless a block-parallel drafter is explicitly
+introduced. Mark an all-accepted example as conditional, never a guaranteed
+speedup; do not silently omit draft work or imply every proposal is accepted.
+
 ### Stage and background
 
-Use the near-black background (`theme.BACKGROUND`, `#1a1a2e`).  The dark stage
+Use the deep blue-black background (`theme.BACKGROUND`, `#0b1020`). The dark stage
 maximizes perceived contrast and lets color carry meaning instead of decoration.
 Do not use white, gray, or colored backgrounds.
+
+Use `theme.SURFACE` and `theme.SURFACE_ELEVATED` for the bodies of technical
+objects. This creates a restrained foreground/background hierarchy while
+keeping semantic colors free to communicate meaning. Do not fill every object
+with its role color at full opacity; reserve saturated color for the active
+edge, current value, or state change.
 
 ### Semantic color roles
 
@@ -269,11 +332,64 @@ semantic need arises, extend the theme.
 
 ### Typography hierarchy
 
-Use exactly three levels—heading, body, caption—from `theme.TYPOGRAPHY`.  A
+Use three semantic levels—heading, body, caption—with `theme.TYPOGRAPHY` as
+the starting scale. A
 heading introduces a concept; body text is the primary explanatory level;
-captions annotate, label, or provide secondary detail.  Do not create
-intermediate sizes.  Prefer `Text` for labels and `MathTex` for mathematics;
+captions annotate, label, or provide secondary detail. Keep those roles
+consistent. A scene-local type pairing may need optical size adjustments
+because serif and sans-serif letters at the same point size have different
+visible heights; document that choice instead of adding arbitrary hierarchy
+levels. Prefer `Text` for labels and `MathTex` for mathematics;
 avoid `Tex` prose unless LaTeX formatting is genuinely needed.
+
+Headings should be short enough to read as a shape, not a sentence. Prefer
+sentence case. Keep text blocks narrow; when narration can carry a statement,
+show only the exact noun, value, or invariant the viewer needs as an anchor.
+
+### Object craftsmanship
+
+Technical objects should look intentionally designed even when static:
+
+- prefer softly rounded geometry for discrete objects such as tokens, cells,
+  slots, and probability tracks;
+- separate an object's dark body from its semantic edge or active fill;
+- use a faint inner ring or secondary outline only when it clarifies the
+  object's boundary at video resolution;
+- treat shadows, inner borders, and halos as optional tools, not required
+  layers on every object; flat geometry is preferable when it reveals the
+  quantity or relationship more directly;
+- fit labels inside their containers programmatically;
+- align repeated numeric values to a stable track or column so changing a
+  value does not cause the whole composition to breathe;
+- keep connectors visually behind the objects they connect;
+- use low-opacity halos only for current focus, never around every object.
+
+The shared `TokenBox`, `TreeNode`, `LabeledMatrix`, and
+`ProbabilityDistribution` are useful when those are the right representations.
+Keep new representations scene-local until their semantics recur. Consistent
+color and typography do not require identical shapes for different concepts.
+
+### Motion rhythm
+
+Motion has three beats: anticipation, action, and rest. The anticipation may be
+as small as dimming context or highlighting operands; the action performs the
+technical state change; the rest leaves the result stable long enough to read.
+
+- introduce structure before detail: container/edge first, label/value second;
+- show causal dependencies: finish a pass, expose its output, then start the
+  dependent pass; preserve operands, tokens, and destinations through the
+  operation instead of substituting a flash and a precomputed result;
+- use `LaggedStart` for ordered accumulation, with a restrained lag ratio;
+- use `TransformFromCopy` when a source contributes to a result;
+- keep most state changes between roughly 0.4 and 1.2 seconds;
+- save slower motion for a genuinely important conceptual transformation;
+- add a short hold after dense changes, not after decorative entrances;
+- make the decisive relationship visible before naming it in a caption;
+- avoid elastic, bouncy, or spinning motion unless it encodes real behavior.
+
+At any instant, the viewer should know where to look. If three unrelated
+regions animate together, the choreography has failed even if each animation
+looks polished in isolation.
 
 ### Stroke hierarchy
 
@@ -295,6 +411,14 @@ Default to a single evolving picture centered on the frame.  Use
 `composition.place_at_safe_edge()` instead of `.to_edge()` to respect safe
 margins.  Avoid multi-panel grid layouts unless genuinely comparing two or more
 independent things.
+
+Make the mechanism visually dominant. A useful starting composition gives it
+roughly three-quarters of the usable width; this is a design target, not a
+reason to stretch data geometry or shrink labels. Retire an opening headline
+once the mechanism begins. Change scale only to reveal a dependency or a
+comparison, and transform the continuing objects together. Do not solve an
+overfull frame by globally shrinking it: remove content, shorten labels, or
+split the explanation.
 
 ### When panels are justified
 
@@ -385,3 +509,10 @@ of them fail, regardless of how correct the underlying technical content is.
    problems, but only a full playback catches pacing drift, a leftover
    mobject from an earlier section, or a transition that only breaks in
    sequence.
+5. **The picture must explain, not merely announce.** Review the rough cut
+   without audio or its headline. Identify what visibly causes the next state,
+   which objects persist, and which geometric relationship delivers the
+   conclusion. Reject a model flash followed by a disconnected answer, a
+   comparison with mismatched scales or missing overhead, and a final insight
+   that exists only in a caption. This is a perceptual review, not a property
+   that passing geometry assertions alone can establish.

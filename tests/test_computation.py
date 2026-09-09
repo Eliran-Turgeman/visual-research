@@ -78,3 +78,10 @@ def test_build_interpretation_is_optional():
     assert label is not None
     # manim's Text.text getter strips whitespace; compare ignoring spaces.
     assert label.text.replace(" ", "") == "ajointmassunderQ"
+
+
+def test_rounded_equations_use_approximation_not_false_equality():
+    rounded = Computation(Operand("prefix", 0.33), Operand("works", 0.52))
+    exact = Computation(Operand("the", 0.55), Operand("model", 0.60))
+    assert rounded.build_equation()[-2].get_tex_string() == r"\approx"
+    assert exact.build_equation()[-2].get_tex_string() == "="

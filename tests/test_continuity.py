@@ -50,6 +50,8 @@ class TestProbabilityDistribution:
         hi = DistributionEntry("hi", "H", 0.9, max_bar_width=2.0)
         lo = DistributionEntry("lo", "L", 0.1, max_bar_width=2.0)
         assert hi.bar.width > lo.bar.width
+        assert hi.track.width == pytest.approx(lo.track.width)
+        assert hi.bar.get_left()[0] == pytest.approx(hi.track.get_left()[0])
 
     def test_highlight_changes_entry_and_returns_self(self):
         dist = ProbabilityDistribution({"x": ("X", 0.8)})
@@ -64,6 +66,10 @@ class TestProbabilityDistribution:
     def test_empty_entries_rejected(self):
         with pytest.raises(ValueError):
             ProbabilityDistribution({})
+
+    def test_probability_outside_unit_interval_rejected(self):
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            DistributionEntry("x", "X", 1.2)
 
     def test_mass_transfer_returns_animation(self):
         entry = DistributionEntry("k", "tok", 0.6)

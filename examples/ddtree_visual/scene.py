@@ -120,7 +120,7 @@ MASK_CENTER = (0.0, -1.5, 0)
 COMMITTED_COLOR = SUCCESS.base
 SPECULATIVE_COLOR = PRIMARY.base
 TARGET_COLOR = ACCENT.base
-BONUS_COLOR = "#e8d44d"
+BONUS_COLOR = ACCENT.light
 
 REVIEW_TIMELINE_PATH = Path("media/review/ddtree_visual/timeline.json")
 

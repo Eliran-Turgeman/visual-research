@@ -24,6 +24,13 @@ def test_token_components_preserve_state_and_order():
     assert TokenBox("x").state is TokenState.NEUTRAL
 
 
+def test_token_box_long_label_stays_inside_and_has_layered_material():
+    token = TokenBox("extraordinarily-long-token", width=1.15)
+    assert contains(token.box, token.label)
+    assert token.shadow.get_fill_opacity() > 0
+    assert token.inner_border.get_stroke_opacity() > 0
+
+
 def test_stable_tree_requires_existing_unique_nodes():
     tree = StableTree()
     tree.add_node("root", TreeNode("r"), (0, 1, 0))
@@ -50,6 +57,12 @@ def test_tree_node_short_label_is_not_shrunk_unnecessarily():
     node = TreeNode("a", radius=0.46)
     default_width = TreeNode("a", radius=10.0).label.width
     assert node.label.width == pytest.approx(default_width)
+
+
+def test_tree_node_has_subtle_depth_layers():
+    node = TreeNode("a")
+    assert node.halo.radius > node.circle.radius
+    assert node.inner_ring.radius < node.circle.radius
 
 
 def test_tree_node_score_placement_is_configurable_and_backward_compatible():
@@ -80,6 +93,7 @@ def test_matrix_highlights_and_validates_shape():
     assert matrix.shape_label("2 x 2").text == "2x2"
     with pytest.raises(ValueError):
         LabeledMatrix([[1], [2, 3]])
+    assert matrix.cells[0][0][0].get_fill_opacity() > 0
 
 
 def test_equation_and_timeline_validation():

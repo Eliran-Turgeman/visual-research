@@ -30,20 +30,24 @@ class _SemanticColor:
     dim: str
 
 
-# Near-black stage background
-BACKGROUND = "#1a1a2e"
+# Deep blue-black stage and subtly separated object surfaces.  The surface
+# colors create depth without relying on ornamental panels or drop shadows.
+BACKGROUND = "#0b1020"
+SURFACE = "#111a2e"
+SURFACE_ELEVATED = "#17233d"
+SHADOW = "#050814"
 
 # Primary text / default foreground
-TEXT_PRIMARY = "#e8e8f0"
-TEXT_SECONDARY = "#9a9ab0"
-TEXT_MUTED = "#5c5c72"
+TEXT_PRIMARY = "#f4f7ff"
+TEXT_SECONDARY = "#aeb9d1"
+TEXT_MUTED = "#66738f"
 
 # Semantic role colors — original palette, not borrowed hex values.
-PRIMARY = _SemanticColor(base="#5e9cf5", light="#8bbdff", dim="#2e5a8a")
-ACCENT = _SemanticColor(base="#f0a35e", light="#ffc88a", dim="#8a5e2e")
-SUCCESS = _SemanticColor(base="#5ecf8b", light="#8af0b5", dim="#2e7a4d")
-DANGER = _SemanticColor(base="#e8637a", light="#ff8da0", dim="#8a2e3e")
-NEUTRAL = _SemanticColor(base="#7a7a92", light="#a0a0b8", dim="#4a4a5e")
+PRIMARY = _SemanticColor(base="#4f9cff", light="#8fc5ff", dim="#24558f")
+ACCENT = _SemanticColor(base="#f6c453", light="#ffe08a", dim="#896a25")
+SUCCESS = _SemanticColor(base="#59d499", light="#91edc1", dim="#276f52")
+DANGER = _SemanticColor(base="#f06b78", light="#ff9ba5", dim="#87333d")
+NEUTRAL = _SemanticColor(base="#8290ad", light="#b6c2d9", dim="#3d4962")
 
 # Convenience alias mapping for programmatic access
 ROLE_COLORS: dict[str, _SemanticColor] = {
@@ -161,9 +165,12 @@ __all__ = [
     "PRIMARY",
     "ROLE_COLORS",
     "SAFE_MARGINS",
+    "SHADOW",
     "SPACING",
     "STROKES",
     "SUCCESS",
+    "SURFACE",
+    "SURFACE_ELEVATED",
     "TEXT_MUTED",
     "TEXT_PRIMARY",
     "TEXT_SECONDARY",

@@ -1,6 +1,16 @@
 """Small stable-layout tree primitives."""
 
-from manim import BLUE, GRAY, RIGHT, YELLOW, Circle, Line, Text, VGroup
+from manim import RIGHT, Circle, Line, Text, VGroup
+
+from .theme import (
+    ACCENT,
+    NEUTRAL,
+    PRIMARY,
+    STROKES,
+    SURFACE_ELEVATED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
 
 # Fraction of the circle's diameter a label may occupy before it is scaled
 # down to stay inside the circle. Leaves a visible ring of padding.
@@ -29,12 +39,20 @@ class TreeNode(VGroup):
     ) -> None:
         super().__init__()
         self.radius = radius
-        self.circle = Circle(radius=radius, color=GRAY).set_fill(GRAY, opacity=0.1)
-        self.label = Text(label, font_size=font_size)
+        self.halo = Circle(radius=radius + 0.055).set_stroke(
+            NEUTRAL.dim, width=5.5, opacity=0.16
+        ).set_fill(opacity=0)
+        self.circle = Circle(radius=radius).set_stroke(
+            NEUTRAL.base, width=STROKES.normal.width
+        ).set_fill(SURFACE_ELEVATED, opacity=0.98)
+        self.inner_ring = Circle(radius=radius * 0.84).set_stroke(
+            NEUTRAL.light, width=STROKES.hairline.width, opacity=0.18
+        ).set_fill(opacity=0)
+        self.label = Text(label, font_size=font_size, color=TEXT_PRIMARY)
         self._fit_label_to_circle()
         self.label.move_to(self.circle)
         self.score_label = None
-        self.add(self.circle, self.label)
+        self.add(self.halo, self.circle, self.inner_ring, self.label)
         if score is not None:
             self.set_score(
                 score,
@@ -101,7 +119,7 @@ class TreeNode(VGroup):
         up owning exactly one score label, never a second stray copy.
         """
         value = f"{score:.2f}" if isinstance(score, float) else str(score)
-        return Text(value, font_size=font_size).next_to(
+        return Text(value, font_size=font_size, color=TEXT_SECONDARY).next_to(
             self.circle, direction=direction, buff=buff
         )
 
@@ -119,14 +137,22 @@ class TreeNode(VGroup):
         self.add(label)
         return label
 
-    def highlight(self, color=YELLOW) -> "TreeNode":
+    def highlight(self, color=ACCENT.base) -> "TreeNode":
         """Highlight this node in place."""
-        self.circle.set_stroke(color, width=4).set_fill(color, opacity=0.2)
+        self.halo.set_stroke(color, width=7, opacity=0.22)
+        self.circle.set_stroke(color, width=STROKES.heavy.width).set_fill(
+            color, opacity=0.24
+        )
+        self.inner_ring.set_stroke(color, opacity=0.5)
         return self
 
     def reset_highlight(self) -> "TreeNode":
         """Restore the neutral node style."""
-        self.circle.set_stroke(GRAY, width=2).set_fill(GRAY, opacity=0.1)
+        self.halo.set_stroke(NEUTRAL.dim, width=5.5, opacity=0.16)
+        self.circle.set_stroke(
+            NEUTRAL.base, width=STROKES.normal.width
+        ).set_fill(SURFACE_ELEVATED, opacity=0.98)
+        self.inner_ring.set_stroke(NEUTRAL.light, opacity=0.18)
         return self
 
 
@@ -157,16 +183,19 @@ class StableTree(VGroup):
         edge = Line(
             self.nodes[parent].circle.get_bottom(),
             self.nodes[child].circle.get_top(),
-            color=GRAY,
+            color=NEUTRAL.dim,
+            stroke_width=STROKES.normal.width,
         )
         self.edges[key] = edge
         self.add_to_back(edge)
         return edge
 
-    def highlight_path(self, keys: list[str], color=BLUE) -> "StableTree":
+    def highlight_path(self, keys: list[str], color=PRIMARY.base) -> "StableTree":
         """Highlight nodes and edges along an ordered path."""
         for key in keys:
             self.nodes[key].highlight(color)
         for pair in zip(keys, keys[1:]):
-            self.edges[pair].set_color(color).set_stroke(width=4)
+            self.edges[pair].set_color(color).set_stroke(
+                width=STROKES.heavy.width
+            )
         return self

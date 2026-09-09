@@ -32,23 +32,33 @@ Prefer a complete small example to a broad but shallow survey.
    worked through completely. When useful, use two:
    - a minimal example that establishes the mechanism;
    - an example showing the advantage, edge case, or non-obvious behavior.
-5. **Write a concise internal storyboard.** For every beat, record its teaching
-   purpose, narration, visible objects, state change, and approximate duration.
-   Remove beats that do not advance understanding.
-6. **Write narration and visuals together.** Divide narration into short
-   semantic segments. Each segment should introduce one idea, show one state
-   transition, explain one operation, or make one comparison.
-7. **Implement with semantic Manim objects.** Reuse `manim_lib` where it fits.
-   Keep conceptual entities spatially stable and animate their changing state.
-8. **Add synchronized voiceover.** Select a configured provider, place related
-   animation inside short voiceover blocks, and use tracker duration when
-   timing animations or waits. Keep silent fallback support where practical.
-9. **Render with the repository script.** Use a draft quality while iterating,
-   then the requested or production quality for the deliverable.
-10. **Inspect the output.** Inspect representative frames and, when possible,
+5. **Design backward from a visible discovery.** State the relationship the
+   final picture must make obvious without a headline. Sketch three key
+   compositions: opening, mechanism, and payoff. Choose a visual metaphor
+   grounded in the mechanism, such as distance for time or area for probability.
+   Reject a plan whose conclusion exists only in narration or a caption.
+6. **Choose representations by meaning.** Specify what shape, position, color,
+   and motion mean for each object. Different concepts need distinguishable
+   forms, not a box for every noun. Reuse `manim_lib` when its semantics fit;
+   keep a justified new representation scene-local until it recurs.
+7. **Storyboard cause and effect with narration.** For each short beat, record
+   the viewer's question, visible cause, resulting state change, focal region,
+   continuing objects, narration, and duration budget. Remove redundant prose
+   and any motion that merely announces an operation instead of showing it.
+8. **Build and render a rough silent animation first.** Establish composition,
+   dependency order, identity, pacing, and the discovery before polishing
+   surfaces. Use the repository render script at draft quality. The mechanism
+   must occupy the frame, and the comparison must use honest common scales.
+9. **Add final styling and synchronized voiceover.** Keep useful structural
+   contrast, not mandatory shadows or halos. Use short narration blocks and
+   actual speech durations to budget meaningful actions and pauses. Do not
+   stretch a fade or leave long static gaps to fill a voiceover block.
+10. **Render the deliverable.** Use the repository script at the requested or
+    production quality. Preserve the rough cut for comparison.
+11. **Inspect the output.** Inspect representative frames and, when possible,
     watch the complete video with audio. A successfully encoded MP4 is not a
     completed explainer.
-11. **Revise and render again.** Fix obvious correctness, layout, timing,
+12. **Revise and render again.** Fix obvious correctness, layout, timing,
     narration, and rendering problems before completion.
 
 Do not pause for approval between these steps unless the request is genuinely
@@ -60,13 +70,21 @@ ambiguous in a way that changes the technical explanation.
 - Use concrete examples before or alongside abstraction.
 - Show algorithms changing state rather than describing changes over static
   slides.
+- Make cause precede effect: a dependency must visibly resolve before its
+  dependent operation begins. A flash followed by an unrelated result is not
+  a demonstration of computation.
 - Use toy values small enough to verify on screen.
 - Introduce equations, labels, and structures progressively.
 - Compare against a baseline when it explains why the technique exists.
 - Preserve the viewer's mental map: update stable objects instead of rebuilding
   or moving the whole layout.
 - Keep one primary visual idea on screen at a time.
+- Let the mechanism, not a persistent heading, dominate the composition.
+- Preserve shared scales and show overhead when comparing cost or latency.
 - Prefer emphasis, transformation, and state changes over walls of text.
+- Let narration carry prose; keep on-screen text to short visual anchors.
+- Introduce structure before detail and leave a brief visual rest after dense
+  state changes.
 - End when the promised idea is established; do not add a generic recap.
 
 ## Correctness contract
@@ -114,6 +132,13 @@ Before completion, check:
 - transforms, removals, highlights, and branches communicate true semantics;
 - no unexplained color, shape, or positional distinction;
 - no unnecessary object, paragraph, camera move, or decorative animation;
+- the mechanism remains legible and visually dominant at the intended viewing
+  size; nothing was globally shrunk just to fit too much content;
+- object forms have explicit meanings, and continuity survives changes in
+  representation; borders, shadows, and halos earn their place;
+- with sound muted and the headline hidden, the visible cause, effect, and
+  final relationship can still be identified;
+- the key visual discovery occurs before its concluding caption or narration;
 - audio is present, intelligible, and not cut off when narration was requested.
 
 Inspect frames near every major transition, plus the first and final frame.

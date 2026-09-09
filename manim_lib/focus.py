@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from manim import Animation, FadeToColor, Mobject
+from manim import Animation, AnimationGroup, Mobject
 
 from .theme import DIM_OPACITY, FOCUS_RESTORE_OPACITY, TEXT_MUTED
 
@@ -21,9 +21,10 @@ from .theme import DIM_OPACITY, FOCUS_RESTORE_OPACITY, TEXT_MUTED
 
 @dataclass
 class _MobjectSnapshot:
-    """Captured visual state of a single mobject for later restoration."""
-    opacity: float
-    color: str | None
+    """Captured opacity state of one family member."""
+    mobject: Mobject
+    fill_opacity: object
+    stroke_opacity: object
 
 
 @dataclass
@@ -33,7 +34,9 @@ class FocusContext:
     Callers should not inspect internals; just pass this to
     :func:`restore_focus` when the emphasis phase is over.
     """
-    _snapshots: dict[int, _MobjectSnapshot] = field(default_factory=dict)
+    _snapshots: dict[int, tuple[_MobjectSnapshot, ...]] = field(
+        default_factory=dict
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -66,10 +69,13 @@ def focus_on(
     for mob in context:
         if id(mob) in target_ids:
             continue
-        # Snapshot current state
-        ctx._snapshots[id(mob)] = _MobjectSnapshot(
-            opacity=mob.get_fill_opacity(),
-            color=_safe_hex(mob),
+        ctx._snapshots[id(mob)] = tuple(
+            _MobjectSnapshot(
+                mobject=member,
+                fill_opacity=member.get_fill_opacity(),
+                stroke_opacity=member.get_stroke_opacity(),
+            )
+            for member in mob.family_members_with_points()
         )
         anims.append(mob.animate.set_opacity(dim_opacity))
 
@@ -87,24 +93,18 @@ def restore_focus(
     """
     anims: list[Animation] = []
     for mob in context:
-        snap = focus_ctx._snapshots.get(id(mob))
-        if snap is None:
+        snapshots = focus_ctx._snapshots.get(id(mob))
+        if snapshots is None:
             continue
-        anims.append(mob.animate.set_opacity(snap.opacity))
+        member_anims = [
+            snapshot.mobject.animate.set_fill(
+                opacity=snapshot.fill_opacity
+            ).set_stroke(opacity=snapshot.stroke_opacity)
+            for snapshot in snapshots
+        ]
+        if member_anims:
+            anims.append(AnimationGroup(*member_anims))
     return anims
-
-
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
-
-def _safe_hex(mob: Mobject) -> str | None:
-    """Extract a hex color string from a mobject, returning None on failure."""
-    try:
-        c = mob.get_color()
-        return c.hex if hasattr(c, "hex") else str(c)
-    except Exception:
-        return None
 
 
 __all__ = [
