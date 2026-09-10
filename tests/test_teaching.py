@@ -72,31 +72,151 @@ def test_public_contracts_validate_without_certifying_comprehension(episode):
     json.dumps(report, allow_nan=False)
 
 
-def literal_assignment(path, name):
-    module = ast.parse(path.read_text(encoding="utf-8"))
+def pinned_source(source):
+    """Use the working file when current, otherwise its local committed snapshot.
+
+    Sibling fixes are integrated separately; this never imports their code or
+    reads another worktree. CLI --check-sources separately checks current files.
+    """
+    text = (ROOT / source["ref"]).read_text(encoding="utf-8")
+    if teaching.text_digest(text) != source["sha256"]:
+        ref = source["ref"].replace("\\", "/")
+        text = subprocess.check_output(
+            ["git", "show", f"{source['revision']}:{ref}"], cwd=ROOT,
+        ).decode("utf-8")
+    assert teaching.text_digest(text) == source["sha256"]
+    return text
+
+
+def literal_assignment(path_or_text, name):
+    module = ast.parse(path_or_text.read_text(encoding="utf-8") if isinstance(path_or_text, Path) else path_or_text)
     for node in module.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
             return node.value
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
             return node.value
-    raise AssertionError(f"Missing {name} in {path}")
+    raise AssertionError(f"Missing literal assignment {name}")
 
 
 @pytest.mark.parametrize("episode", ("ddtree_full", "dflash_visual", "ddtree_visual", "speculative_decoding_timeline"))
-def test_actual_narration_mapping_is_not_invented(episode):
+def test_pinned_narration_mapping_is_not_invented(episode):
     document = contract(episode)
     for beat in document["beats"]:
         narration = beat["narration"]
         source = next(s for s in document["sources"] if s["id"] == narration["source"])
-        path = ROOT / source["ref"]
+        text_source = pinned_source(source)
         if narration["locator"].startswith("BEATS["):
-            call = literal_assignment(path, "BEATS").elts[narration["index"]]
+            call = literal_assignment(text_source, "BEATS").elts[narration["index"]]
             text = next((kw.value for kw in call.keywords if kw.arg == "narration"), None)
             if text is None:
                 text = call.args[2]
         else:
-            text = literal_assignment(path, "NARRATION").elts[narration["index"]]
+            text = literal_assignment(text_source, "NARRATION").elts[narration["index"]]
         assert ast.literal_eval(text) == narration["text"]
+
+
+@pytest.mark.parametrize("episode", ("dflash_visual", "ddtree_visual", "ddtree_dflash"))
+def test_repaired_episode_contracts_bind_committed_sources_without_legacy_exclusions(episode):
+    document = contract(episode)
+    texts = {s["id"]: pinned_source(s) for s in document["sources"] if "://" not in s["ref"]}
+    report = teaching.validate_contract(document, source_texts=texts, timeline=timeline_for(document))
+    assert report["valid"], report["errors"]
+    assert document["timeline_mapping"] == "complete"
+    assert "incomplete_mapping" not in codes(report, "warnings")
+    assert not any(check["check"] == "complete_narration_coverage" for check in report["omitted_checks"])
+
+
+def test_repaired_dflash_target_conditionals_and_greedy_output_are_independently_checked():
+    document = contract("dflash_visual")
+    source = next(s for s in document["sources"] if s["id"] == "storyboard")
+    actual = ast.literal_eval(literal_assignment(pinned_source(source), "TARGET_CONDITIONALS"))
+    check = document["worked_examples"][1]["checks"][0]
+    supplied = {tuple(row["prefix"]): {k: Fraction(v) for k, v in row["distribution"].items()}
+                for row in check["input"]["conditionals"]}
+    assert supplied == {prefix: {k: Fraction(str(v)) for k, v in values.items()} for prefix, values in actual.items()}
+    assert len(document["beats"]) == 12
+    target_only_prefix = []
+    for _ in range(2):
+        probabilities = supplied[tuple(target_only_prefix)]
+        target_only_prefix.append(max(probabilities, key=probabilities.get))
+    result = teaching.evaluate_check(check)
+    assert result["passed"]
+    assert result["actual"]["emitted"] == target_only_prefix == ["the", "system"]
+    assert result["actual"]["matched"] == ["the"]
+    assert max(supplied[("the", "model")], key=supplied[("the", "model")].get) == "works"
+    assert "works" not in result["actual"]["emitted"]
+
+
+def test_combined_episode_maps_all_actual_narration_including_loop_selections():
+    document = contract("ddtree_dflash")
+    source = next(s for s in document["sources"] if s["id"] == "scene")
+    module = ast.parse(pinned_source(source))
+    cls = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == "DDTreeDFlashExplainer")
+    methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+    order = [node.value.func.attr for node in methods["construct"].body
+             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Attribute)]
+    texts = []
+    for name in order:
+        method = methods[name]
+        calls = sorted(
+            (n for n in ast.walk(method) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Attribute) and n.func.attr == "narrate"),
+            key=lambda n: n.lineno,
+        )
+        if name == "best_first_example":
+            selection_texts = next(
+                ast.literal_eval(n.value) for n in ast.walk(method)
+                if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "narration" for t in n.targets)
+            )
+            texts.extend([ast.literal_eval(calls[0].args[0]), *selection_texts.values(),
+                          ast.literal_eval(calls[-1].args[0])])
+        else:
+            texts.extend(ast.literal_eval(call.args[0]) for call in calls)
+    assert len(texts) == len(document["beats"]) == 30
+    assert texts == [beat["narration"]["text"] for beat in document["beats"]]
+
+
+def test_flow_maps_actual_text_without_passing_unresolved_claim_support():
+    document = contract("speculative_decoding_flow")
+    source = next(s for s in document["sources"] if s["id"] == "scene")
+    module = ast.parse(pinned_source(source))
+    cls = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == "SpeculativeDecodingFlow")
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "construct")
+    words = next(ast.literal_eval(n.value) for n in ast.walk(method)
+                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "token_words" for t in n.targets))
+    calls = sorted((n for n in ast.walk(method) if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute) and n.func.attr == "narrate"), key=lambda n: n.lineno)
+    texts = []
+    for call in calls:
+        value = call.args[0]
+        if isinstance(value, ast.JoinedStr):
+            for index, word in enumerate(words, start=1):
+                fields = {"index": index, "word": word}
+                texts.append("".join(part.value if isinstance(part, ast.Constant) else str(fields[part.value.id])
+                                     for part in value.values))
+        else:
+            texts.append(ast.literal_eval(value))
+    assert texts == [beat["narration"]["text"] for beat in document["beats"]]
+    assert len(texts) == 8
+    report = teaching.validate_contract(document, timeline=timeline_for(document))
+    assert report["valid"]
+    unresolved = {check.get("claim") for check in report["omitted_checks"] if check["check"] == "claim_support"}
+    assert unresolved == {"unqualified-parallel-draft", "unquantified-speedup"}
+    assert "unresolved_claim" in codes(report, "warnings")
+    assert report["evidence"]["production_acceptance"] == "not_assessed"
+
+
+def test_partial_mapping_is_explicitly_omitted_not_counted_as_passed():
+    document = contract()
+    timeline = timeline_for(document)
+    document["timeline_mapping"] = "partial"
+    document["mapping_note"] = "Only the opening two blocks are mapped in this coverage fixture."
+    document["beats"] = document["beats"][:2]
+    report = teaching.validate_contract(document, timeline=timeline)
+    assert report["valid"]
+    assert "incomplete_mapping" in codes(report, "warnings")
+    assert any(check["check"] == "complete_narration_coverage" for check in report["omitted_checks"])
 
 
 @pytest.mark.parametrize("episode", ("ddtree_full", "speculative_decoding_timeline"))

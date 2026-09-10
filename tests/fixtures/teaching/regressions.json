@@ -2,7 +2,15 @@
   "schema_version":1,
   "scope":"Reduced semantic counterexamples grounded in inspected repository data. These exercise teaching acceptance inputs, not another agent's scene implementation tests or rendered pixels.",
   "source_revision":"aebec5f3b4a03a6db3051a885db9e1abe99a8505",
+  "repaired_dflash_revision":"463bc88baaab3ad12c73f7991a8e45f5002b9c3f",
   "checks":[
+    {
+      "id":"full-sequence-equals-only-first-marginal",
+      "origin":"Original examples\\ddtree_dflash\\scene.py EquationSteps claimed Q(y1,y2,y3)=q1(y1) before adding factors. The actual toy path gives a numerical counterexample; repaired code scopes the left-hand side to each prefix.",
+      "check":{"kind":"rounded_product","input":{"factors":["0.55","0.60","0.52"],"displayed":"0.55","relation":"=","decimal_places":2},"expected":{"exact_product":"0.171600"}},
+      "passed":false,
+      "message":"False equality"
+    },
     {
       "id":"rounded-ddtree-product-as-equality",
       "origin":"examples\\ddtree_visual\\scene.py, _beat_4_complete_budget: _toy rounds prefix.mass but the MathTex relation was '='.",
@@ -47,6 +55,13 @@
       "id":"omitted-sequential-drafting-overhead",
       "origin":"examples\\speculative_decoding_timeline\\scene.py ToyTiming includes three draft steps. The older flow's target-call count must not be substituted for total work time.",
       "check":{"kind":"serial_cost","input":{"token_count":3,"target_pass":"1","draft_step":"0.2","verification":"1"},"expected":{"baseline_end":"3","draft_end":"0.6","speculative_end":"1"}},
+      "passed":false,
+      "message":"Expected state disagrees"
+    },
+    {
+      "id":"dflash-later-match-after-wrong-prefix",
+      "origin":"Repaired dflash_visual TARGET_CONDITIONALS at 463bc88: the target chooses system after the, so the later works computed after the model cannot be appended to the system.",
+      "check":{"kind":"greedy_tree_walk","input":{"paths":[[],["the"],["the","model"],["the","model","works"]],"conditionals":[{"prefix":[],"distribution":{"the":"0.70","a":"0.30"}},{"prefix":["the"],"distribution":{"model":"0.20","system":"0.80"}},{"prefix":["the","model"],"distribution":{"works":"0.90","fails":"0.10"}},{"prefix":["the","model","works"],"distribution":{"well":"0.60","now":"0.40"}}]},"expected":{"matched":["the","works"],"emitted":["the","system","works"],"next_anchor":"system"}},
       "passed":false,
       "message":"Expected state disagrees"
     }

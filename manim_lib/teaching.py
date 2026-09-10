@@ -179,13 +179,25 @@ def _compute(kind, data):
     if kind == "greedy_tree_walk":
         paths = _paths(data["paths"])
         decisions = {}
-        for decision in data["decisions"]:
+        if "decisions" in data and "conditionals" in data:
+            raise ValueError("Supply decisions or target conditionals, not both")
+        supplied = data.get("conditionals", data.get("decisions"))
+        for decision in supplied:
             if not isinstance(decision["prefix"], list) or not all(_text(t) for t in decision["prefix"]):
                 raise ValueError("Decision prefix must be a token array")
             prefix = tuple(decision["prefix"])
-            if prefix not in paths or prefix in decisions or not _text(decision["token"]):
+            token = decision.get("token")
+            if "conditionals" in data:
+                distribution = decision["distribution"]
+                if not isinstance(distribution, dict) or not distribution or not all(_text(t) for t in distribution):
+                    raise ValueError("Target conditional must be a nonempty token distribution")
+                probabilities = {t: _number(p) for t, p in distribution.items()}
+                if sum(probabilities.values()) != 1:
+                    raise ValueError("Target conditional must sum exactly to one")
+                token = max(probabilities, key=probabilities.get)
+            if prefix not in paths or prefix in decisions or not _text(token):
                 raise ValueError("Decision must name a unique tree prefix and token")
-            decisions[prefix] = decision["token"]
+            decisions[prefix] = token
         current = ()
         matched = []
         while current in decisions:
@@ -402,6 +414,7 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
         if status == "unresolved":
             require_text(claim, "explanation", path)
             issue("unresolved_claim", path, str(claim.get("explanation", "")), warning=True)
+            omitted_checks.append({"check": "claim_support", "claim": cid, "reason": str(claim.get("explanation", ""))})
         evidence = claim.get("evidence")
         if not isinstance(evidence, list) or (not evidence and status != "unresolved"):
             issue("unsupported_claim", path, "Mapped claim requires nonempty evidence")
