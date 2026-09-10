@@ -25,6 +25,18 @@ from manim_lib import (
 )
 
 
+BEAT_IDS = (
+    "single-path-risk", "single-path-miss", "shared-conditioning",
+    "toy-marginals", "factorized-products", "keep-runner-up", "non-root-budget",
+    "pop-the", "pop-a", "pop-the-model", "pop-a-model", "rounded-works-product",
+    "pop-the-system", "budget-full", "prefix-closure", "q-not-p",
+    "verification-cost", "flatten-identities", "depth-not-index",
+    "ancestry-row-seven", "block-sibling-leakage", "one-target-pass",
+    "target-a", "target-model", "emit-missing-runs", "sampling-membership",
+    "committed-output",
+)
+
+
 TREE_POSITIONS = {
     "root": (-1.8, 2.25, 0),
     "the": (-4.6, 1.05, 0),
@@ -216,7 +228,7 @@ class DDTreeFullExplainer(NarratedScene):
     @contextmanager
     def beat(self, index):
         beat = BEATS[index]
-        with self.narrate(beat.narration) as tracker:
+        with self.narrate(beat.narration, beat_id=BEAT_IDS[index]) as tracker:
             start = self.time
             if not self._voiceover_enabled and beat.narration in self.draft_durations:
                 tracker.duration = self.draft_durations[beat.narration]
@@ -439,6 +451,7 @@ class DDTreeFullExplainer(NarratedScene):
         next_queue = p.final_frontier(index + 1)
         self.play(FadeOut(self.queue), FadeIn(next_queue), run_time=0.45)
         self.queue = next_queue
+        self.record_visual_event(f"prefix-selected:{prefix.key}")
 
     def explain_objective(self):
         p = self.picture
@@ -514,6 +527,7 @@ class DDTreeFullExplainer(NarratedScene):
             )
             self.play(p.relayout(flat=True), run_time=4.8)
             self.play(FadeIn(p.slot_ids), run_time=0.4)
+            self.record_visual_event("tree-flattened")
         with self.beat(18):
             self.position_label = text("relative position (depth)", 20).move_to((0, 0.50, 0))
             self.play(FadeIn(p.position_ids), FadeIn(self.position_label), run_time=0.5)
@@ -575,6 +589,7 @@ class DDTreeFullExplainer(NarratedScene):
                 FadeIn(VGroup(*[cell[1] for row in p.matrix.cells for cell in row])),
                 run_time=1.4,
             )
+            self.record_visual_event("attention-mask-complete")
             self.hold_until(0.40)
             batch = SurroundingRectangle(
                 VGroup(*[VGroup(node.dot, node.word) for node in p.nodes.values()]),
@@ -640,6 +655,7 @@ class DDTreeFullExplainer(NarratedScene):
             )
             self.remove(self.bonus_dot, self.bonus_word)
             self.add(self.bonus)
+            self.record_visual_event(f"target-miss-visible:{BONUS}")
         with self.beat(25):
             sampling = MathTex(r"y \sim P_{\mathrm{target}}(\cdot\mid\mathrm{prefix})",
                                font_size=29, color=ACCENT.light).move_to((3.8, -1.0, 0))
@@ -666,6 +682,9 @@ class DDTreeFullExplainer(NarratedScene):
                 self.bonus_dot.animate.move_to(bonus_position),
                 self.bonus_word.animate.next_to(bonus_position, DOWN, buff=0.18),
                 run_time=1.3,
+            )
+            self.record_visual_event(
+                "output-ready:" + ",".join([*(WORDS[key] for key in ACCEPTED), BONUS])
             )
             anchor_label, carry = anchor_annotation(self.bonus_word)
             self.play(FadeIn(anchor_label), Create(carry), run_time=0.5)

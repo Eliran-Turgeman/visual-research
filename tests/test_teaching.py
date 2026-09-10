@@ -1,7 +1,7 @@
 """Offline contracts and independent semantic oracles, not render acceptance.
 
-No scenes, speech providers, production algorithm or Manim are imported.
-Scratch files remain under this worktree and are removed after each test.
+Core checks avoid scene/provider imports. Canonical event integration tests
+add silent dry renders and inspect actual state at each recorded transition.
 """
 
 import ast
@@ -35,7 +35,9 @@ def contract(episode="ddtree_full"):
 
 
 def timeline_for(document):
+    """Synthetic fixture for validator unit tests, never production evidence."""
     blocks = []
+    events = []
     for beat in document["beats"]:
         narration = beat.get("narration")
         if narration is None:
@@ -45,7 +47,14 @@ def timeline_for(document):
             "index": narration["index"], "start": start, "end": start + 5,
             "duration": 5, "text": narration["text"],
         })
-    return {"scene_duration": len(blocks) * 5, "blocks": blocks}
+        expected_events = beat.get("events", [])
+        for i, event in enumerate(expected_events):
+            events.append({
+                "time": start + 5 * (i + 1) / (len(expected_events) + 1),
+                "label": event["label"], "beat_id": beat["id"],
+                **({"data": event["data"]} if "data" in event else {}),
+            })
+    return {"scene_duration": len(blocks) * 5, "blocks": blocks, "events": events}
 
 
 def codes(report, level="errors"):
@@ -68,7 +77,8 @@ def test_public_contracts_validate_without_certifying_comprehension(episode):
     assert report["evidence"]["production_acceptance"] == "not_assessed"
     assert report["evidence"]["claim_entailment"] == "human_review_required"
     omitted = {check["check"] for check in report["omitted_checks"]}
-    assert {"timeline_comparison", "source_content", "visual_event_comparison"} <= omitted
+    assert {"timeline_comparison", "source_content"} <= omitted
+    assert ("visual_event_comparison" in omitted) == (not any(beat.get("events") for beat in contract(episode)["beats"]))
     json.dumps(report, allow_nan=False)
 
 
@@ -235,6 +245,7 @@ def test_block_draft_cost_is_one_explicit_nonzero_pass():
 def test_partial_mapping_is_explicitly_omitted_not_counted_as_passed():
     document = contract()
     timeline = timeline_for(document)
+    timeline["events"] = []
     document["timeline_mapping"] = "partial"
     document["mapping_note"] = "Only the opening two blocks are mapped in this coverage fixture."
     document["beats"] = document["beats"][:2]
@@ -372,6 +383,8 @@ def test_hard_timeline_drift_is_separate_from_review(change, code):
 
 def event_document():
     document = contract("speculative_decoding_timeline")
+    for beat in document["beats"]:
+        beat.pop("events", None)
     document["beats"][0]["events"] = [
         {"label": "target-finished", "data": {"token": "can", "accepted": True}},
         {"label": "token-visible"},
@@ -401,7 +414,10 @@ def test_optional_event_mapping_checks_data_and_cause_order():
 
 def test_legacy_timeline_accepted_without_optional_fields():
     document = contract()
+    for beat in document["beats"]:
+        beat.pop("events", None)
     timeline = timeline_for(document)
+    timeline.pop("events")
     for block in timeline["blocks"]:
         del block["duration"]
     report = teaching.validate_contract(document, timeline=timeline)
@@ -614,3 +630,107 @@ def test_present_but_invalid_run_id_is_not_legacy(run_id):
     timeline = timeline_for(document)
     timeline["run_id"] = run_id
     assert "timeline_shape" in codes(teaching.validate_contract(document, timeline=timeline))
+
+
+@pytest.mark.parametrize("episode", ("ddtree_full", "speculative_decoding_timeline"))
+def test_canonical_event_contract_rejects_missing_or_wrong_transition(episode):
+    document = contract(episode)
+    timeline = timeline_for(document)
+    assert timeline["events"]
+    assert teaching.validate_contract(document, timeline=timeline)["valid"]
+    original = copy.deepcopy(timeline)
+    timeline["events"].pop()
+    assert "event_drift" in codes(teaching.validate_contract(document, timeline=timeline))
+    original["events"][0]["label"] = "wrong-completed-transition"
+    assert "event_drift" in codes(teaching.validate_contract(document, timeline=original))
+
+
+@pytest.mark.parametrize("episode,class_name", [
+    ("ddtree_full", "DDTreeFullExplainer"),
+    ("speculative_decoding_timeline", "SpeculativeDecodingTimeline"),
+])
+def test_canonical_events_follow_real_completed_state_without_changing_timing(
+    monkeypatch, tmp_path, episode, class_name,
+):
+    from manim import tempconfig
+
+    module = importlib.import_module(f"examples.{episode}.scene")
+    scene_class = getattr(module, class_name)
+    document = contract(episode)
+    assert list(module.BEAT_IDS) == [beat["id"] for beat in document["beats"]]
+    expected = [(beat["id"], event["label"]) for beat in document["beats"] for event in beat.get("events", [])]
+    observed = []
+    monkeypatch.setenv("MANIM_TTS_PROVIDER", "none")
+    monkeypatch.setenv("MANIM_RUN_ID", f"offline-events-{episode}")
+    monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / "events.json"))
+
+    with tempconfig({"dry_run": True, "skip_animations": True, "quality": "low_quality",
+                     "media_dir": str(tmp_path / "media"), "verbosity": "ERROR"}):
+        scene = scene_class()
+        record = scene.record_visual_event
+
+        def observe(label, *, beat_id=None):
+            p = scene.picture
+            families = {id(part) for mob in scene.mobjects for part in mob.get_family()}
+            observed.append((scene._active_beat_id, label))
+            if episode == "speculative_decoding_timeline":
+                if label.startswith("baseline-token-ready:"):
+                    assert p.baseline_intervals[0].progress == 1
+                    assert id(p.baseline_tokens[0]) in families
+                elif label.startswith("baseline-prefix-ready:"):
+                    assert all(interval.progress == 1 for interval in p.baseline_intervals)
+                elif label.startswith("draft-complete:"):
+                    assert all(interval.progress == 1 for interval in p.drafts)
+                    assert all(not candidate.accepted for candidate in p.candidates)
+                    assert all(id(candidate.dot) in families for candidate in p.candidates)
+                elif label == "verification-complete":
+                    assert p.verifier.progress == 1
+                    assert all(not candidate.accepted for candidate in p.candidates)
+                elif label.startswith("output-ready:"):
+                    assert p.verifier.progress == 1
+                    assert all(candidate.accepted for candidate in p.candidates)
+                    for index, candidate in enumerate(p.candidates):
+                        assert candidate.dot.get_center() == pytest.approx(p.accepted_position(index))
+                else:
+                    raise AssertionError(f"Unexpected completion event: {label}")
+            elif label.startswith("prefix-selected:"):
+                node = p.nodes[label.split(":", 1)[1]]
+                assert node in scene.mobjects
+                assert node.mass in node.submobjects
+                assert id(node.word) in families
+            elif label == "tree-flattened":
+                for key, node in p.nodes.items():
+                    assert node.dot.get_center() == pytest.approx(module.FLAT_POSITIONS[key])
+            elif label == "attention-mask-complete":
+                assert len(scene.mask_overlays) == 22
+                assert all(id(cell[1]) in families for row in p.matrix.cells for cell in row)
+            elif label == "target-miss-visible:runs":
+                assert scene.bonus in scene.mobjects
+                assert scene.bonus_word.text == scene.choice.text == "runs"
+            elif label == "output-ready:a,model,runs":
+                assert [p.nodes[key].word.text for key in ("a", "a-model")] + [scene.bonus_word.text] == ["a", "model", "runs"]
+                assert p.nodes["a"].dot.get_center() == pytest.approx((-1.50, 0.55, 0))
+                assert p.nodes["a-model"].dot.get_center() == pytest.approx((0.45, 0.55, 0))
+                assert scene.bonus_dot.get_center() == pytest.approx((3.1, 0.55, 0))
+            else:
+                raise AssertionError(f"Unexpected completion event: {label}")
+            record(label, beat_id=beat_id)
+
+        monkeypatch.setattr(scene, "record_visual_event", observe)
+        scene.render()
+        timeline = teaching.load_contract(tmp_path / "events.json")
+        assert observed == expected
+        assert [(event["beat_id"], event["label"]) for event in timeline["events"]] == expected
+        assert [block["beat_id"] for block in timeline["blocks"]] == list(module.BEAT_IDS)
+        report = teaching.validate_contract(document, timeline=timeline)
+        assert report["valid"], report["errors"]
+        assert not any(check["check"] == "visual_event_comparison" for check in report["omitted_checks"])
+        assert report["evidence"]["audiovisual_fidelity"] == "not_assessed"
+        scene_times = [(block["start"], block["end"], block["text"]) for block in timeline["blocks"]]
+
+        monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / "unrecorded.json"))
+        without_recording = scene_class()
+        monkeypatch.setattr(without_recording, "record_visual_event", lambda *args, **kwargs: None)
+        without_recording.render()
+        assert [(block["start"], block["end"], block["text"]) for block in without_recording._review_blocks] == scene_times
+        assert without_recording.time == scene.time
