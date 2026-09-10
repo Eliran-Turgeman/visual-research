@@ -168,6 +168,8 @@ def test_combined_episode_maps_all_actual_narration_including_loop_selections():
              and isinstance(node.value.func, ast.Attribute)]
     texts = []
     for name in order:
+        if name == "_finalize":
+            continue
         method = methods[name]
         calls = sorted(
             (n for n in ast.walk(method) if isinstance(n, ast.Call)

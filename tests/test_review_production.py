@@ -537,7 +537,11 @@ def test_real_episode_contract_and_cli_envelope_pass_semantic_acceptance(manifes
             "index": i, "start": i / count, "end": (i + 1) / count, "duration": 1 / count,
             "text": beat["narration"]["text"], "beat_id": beat["id"],
         } for i, beat in enumerate(document["beats"])],
-        "events": [],
+        "events": [{
+            "time": (i + (j + 1) / (len(beat["events"]) + 1)) / count,
+            "label": event["label"], "beat_id": beat["id"],
+        } for i, beat in enumerate(document["beats"])
+          for j, event in enumerate(beat.get("events", []))],
     })
     data["artifacts"]["timeline"] = artifact_reference(timeline_path)
     write_json(manifest, data)
