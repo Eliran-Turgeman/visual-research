@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 from manim import (
     BLUE,
@@ -63,9 +64,8 @@ CYAN = "#55DDE0"
 # Universal narration review timeline: written after every successful
 # construct(), regardless of TTS provider, so the frame-extraction tooling in
 # scripts/extract_narration_frames.py has actual rendered start/end
-# timestamps for every narration block to sample. This lives under the
-# gitignored media*/ prefix (see .gitignore) alongside rendered video, never
-# under source control.
+# timestamps for every narration block to sample. Direct renders use this
+# gitignored default; managed renders override it with MANIM_TIMELINE_PATH.
 REVIEW_TIMELINE_PATH = Path("media/review/ddtree_dflash/timeline.json")
 
 # Exposed at module scope (rather than kept local to best_first_example) so
@@ -99,6 +99,11 @@ class DDTreeDFlashExplainer(VoiceoverScene):
         # actual rendered start/end timestamps. Populated once, in narrate()'s
         # finally clause, no matter which TTS branch ran.
         self._review_blocks = []
+        self._review_events = []
+        self._review_run_id = os.getenv("MANIM_RUN_ID")
+        self._review_timeline_path = Path(
+            os.getenv("MANIM_TIMELINE_PATH") or REVIEW_TIMELINE_PATH
+        )
         default_provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "none"
         provider = os.getenv("MANIM_TTS_PROVIDER", default_provider).lower()
         if provider == "openrouter":
@@ -153,7 +158,7 @@ class DDTreeDFlashExplainer(VoiceoverScene):
             )
 
     @contextmanager
-    def narrate(self, text: str):
+    def narrate(self, text: str, *, beat_id: str | None = None):
         """Provider-agnostic narration block.
 
         Every branch below yields a tracker to the caller's ``with`` body, but
@@ -200,15 +205,16 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                 yield SimpleNamespace(duration=max(1.8, len(text.split()) / 2.65))
         finally:
             end = self.time
-            self._review_blocks.append(
-                {
-                    "index": index,
-                    "start": start,
-                    "end": end,
-                    "duration": end - start,
-                    "text": text,
-                }
-            )
+            block = {
+                "index": index,
+                "start": start,
+                "end": end,
+                "duration": end - start,
+                "text": text,
+            }
+            if beat_id is not None:
+                block["beat_id"] = beat_id
+            self._review_blocks.append(block)
 
     def paced(self, tracker, *animations, fraction=0.58, minimum=0.7, maximum=4.5):
         run_time = min(maximum, max(minimum, tracker.duration * fraction))
@@ -265,19 +271,28 @@ class DDTreeDFlashExplainer(VoiceoverScene):
         """Write the universal, provider-independent narration review timeline.
 
         Only reached once construct() has run every section without raising,
-        so a failed render never leaves a stale or partial timeline.json
-        behind. scripts/extract_narration_frames.py consumes this file to
-        pull start/middle/end review frames for every narration block.
+        so failed construction publishes nothing. Managed renders select a
+        run-specific destination with MANIM_TIMELINE_PATH and provenance with
+        MANIM_RUN_ID; direct renders retain the historical default path.
         """
         timeline = {
+            "schema_version": 1,
             "scene_duration": self.time,
             "blocks": self._review_blocks,
+            "events": self._review_events,
         }
-        REVIEW_TIMELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        REVIEW_TIMELINE_PATH.write_text(
-            json.dumps(timeline, indent=2),
-            encoding="utf-8",
+        if self._review_run_id is not None:
+            timeline["run_id"] = self._review_run_id
+        path = self._review_timeline_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pending = path.with_name(
+            f".{path.name}.{uuid4().hex}.writing"
         )
+        try:
+            pending.write_text(json.dumps(timeline, indent=2), encoding="utf-8")
+            pending.replace(path)
+        finally:
+            pending.unlink(missing_ok=True)
 
     def opening(self):
         title = self.heading("DFlash + DDTree", color=CYAN)
@@ -521,8 +536,8 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                 fraction=0.54,
             )
             formula_steps = EquationSteps(
-                r"Q(y_1,y_2,y_3) = q_1(y_1)",
-                r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)",
+                r"Q(y_1) = q_1(y_1)",
+                r"Q(y_1,y_2) = q_1(y_1)\,q_2(y_2)",
                 r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)\,q_3(y_3)",
                 font_size=30,
             )
