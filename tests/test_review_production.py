@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from manim_lib.review import (
-    ReviewError, accept_production, artifact_reference, inspect_production,
+    ReviewError, _validate_teaching_binding, accept_production, artifact_reference, inspect_production,
     media_tolerance, probe_media, read_json, resolve_ffmpeg, sha256_file,
     utc_now, validate_frame_evidence, validate_human_evidence,
     validate_video_timing, verify_acceptance, write_json,
@@ -332,15 +332,86 @@ def test_teaching_artifact_binding_without_teaching_module(manifest, tmp_path):
     validation = tmp_path / "teaching-validation.json"
     write_json(contract, {"title": "Tiny contract fixture"})
     write_json(validation, {"schema_version": 1, "status": "passed",
-                            "contract": artifact_reference(contract), "run_id": "review-test"})
+                            "contract": artifact_reference(contract), "run_id": "review-test",
+                            "timeline": read_json(record)["artifacts"]["timeline"],
+                            "validation": {"valid": True, "errors": []}})
     human = read_json(evidence)
     human["teaching_contract_sha256"] = sha256_file(contract)
     write_json(evidence, human)
     result = accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
     assert result["teaching"]["contract"] == artifact_reference(contract)
+    accepted = tmp_path / "accepted.json"
+    write_json(accepted, result)
+    assert verify_acceptance(manifest, accepted) == result
     contract.write_text('{"changed":true}')
     with pytest.raises(ReviewError, match="SHA-256 mismatch"):
         accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
+
+
+@pytest.fixture
+def teaching_binding(tmp_path):
+    contract, timeline, validation = (
+        tmp_path / "contract.json", tmp_path / "timeline.json", tmp_path / "validation.json",
+    )
+    write_json(contract, {"fixture": "teaching"})
+    write_json(timeline, {"run_id": "bound-run", "scene_duration": 1})
+    record = {"run_id": "bound-run", "artifacts": {"timeline": artifact_reference(timeline)}}
+    evidence = {"teaching_contract_sha256": sha256_file(contract)}
+    envelope = {
+        "schema_version": 1, "status": "passed", "run_id": "bound-run",
+        "contract": artifact_reference(contract), "timeline": artifact_reference(timeline),
+        "validation": {"valid": True, "errors": [], "warnings": []},
+    }
+    write_json(validation, envelope)
+    return contract, validation, record, evidence
+
+
+@pytest.mark.parametrize("change", [
+    {"schema_version": True}, {"status": "failed"}, {"validation": None},
+    {"validation": {"valid": False, "errors": []}},
+    {"validation": {"valid": 1, "errors": []}},
+    {"validation": {"valid": True, "errors": [{"code": "incorrect_example"}]}},
+    {"validation": {"valid": True}}, {"run_id": None}, {"run_id": "other-run"},
+    {"timeline": None},
+])
+def test_teaching_binding_rejects_unchecked_or_contradictory_reports(teaching_binding, change):
+    contract, validation, record, evidence = teaching_binding
+    envelope = read_json(validation)
+    envelope.update(change)
+    write_json(validation, envelope)
+    with pytest.raises(ReviewError):
+        _validate_teaching_binding(contract, validation, record, evidence)
+
+
+def test_teaching_binding_rejects_raw_validator_output(teaching_binding):
+    contract, validation, record, evidence = teaching_binding
+    write_json(validation, {"schema_version": 1, "valid": True, "errors": []})
+    with pytest.raises(ReviewError, match="status=passed"):
+        _validate_teaching_binding(contract, validation, record, evidence)
+
+
+def test_teaching_binding_rejects_a_valid_but_different_timeline(teaching_binding, tmp_path):
+    contract, validation, record, evidence = teaching_binding
+    other = tmp_path / "other-timeline.json"
+    write_json(other, {"run_id": "bound-run", "scene_duration": 99})
+    envelope = read_json(validation)
+    envelope["timeline"] = artifact_reference(other)
+    write_json(validation, envelope)
+    with pytest.raises(ReviewError, match="differs from the reviewed manifest"):
+        _validate_teaching_binding(contract, validation, record, evidence)
+
+
+def test_teaching_binding_rejects_stale_timeline_bytes(teaching_binding):
+    contract, validation, record, evidence = teaching_binding
+    Path(record["artifacts"]["timeline"]["path"]).write_text('{"changed":true}')
+    with pytest.raises(ReviewError, match="SHA-256 mismatch"):
+        _validate_teaching_binding(contract, validation, record, evidence)
+
+
+def test_teaching_binding_requires_human_contract_attribution(teaching_binding):
+    contract, validation, record, _ = teaching_binding
+    with pytest.raises(ReviewError, match="teaching_contract_sha256"):
+        _validate_teaching_binding(contract, validation, record, {})
 
 
 def test_cli_accept_preserves_technical_record_and_verifies_all_evidence(manifest, tmp_path):
