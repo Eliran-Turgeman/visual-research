@@ -17,6 +17,15 @@ Matching source/configuration does not promise bit-for-bit stochastic TTS output
 
 Each invocation reserves OUTPUT_DIR/RUN_ID (never reused), sets MANIM_RUN_ID,
 MANIM_TIMELINE_PATH and MANIM_VOICEOVER_DIR, then invokes Manim without caching.
+That disables only Manim's animation cache, not speech reuse. Speech caches live
+at CACHE_ROOT/PROVIDER, independent of run/output directories. ``--cache-dir``
+selects CACHE_ROOT, then MANIM_TTS_CACHE_ROOT, then repository media/voiceovers.
+Providers never share a cache JSON. MANIM_TTS_CACHE_DIR carries the resolved
+provider directory to scenes; MANIM_VOICEOVER_DIR remains immutable run audio.
+NarratedScene copies the exact consumed audio bytes into content-addressed run
+assets. Timeline block ``audio`` references and manifest ``artifacts.audio``
+identify those copies, not mutable shared cache files. The manifest's ``cache``
+field records the selected provider/path, not an invented hit/request count.
 The final manifest's status is ``rendered`` only after successful encoding,
 full media decoding and matching timeline identity/duration. It is not a review
 or acceptance record. Failed runs retain status ``failed`` for diagnostics.
@@ -25,7 +34,8 @@ Successful runs also expose measured ``metrics.video_seconds``, equal to
 ``artifacts.video.duration``; failed runs do not fabricate a video denominator.
 
 Public building blocks: ``resolve_settings``, ``preflight``, ``find_ffmpeg``,
-``validate_timeline``, ``validate_media``, ``source_snapshot``, ``render`` and ``main``. No schema
+``validate_timeline``, ``validate_media``, ``source_snapshot``,
+``provider_cache_dir``, ``render`` and ``main``. No schema
 framework is required. ``validate_timeline`` accepts legacy timelines unless a
 run ID is explicitly required; managed renders always require it. Managed scenes
 must use NarratedScene (or emit the same run-bound timeline protocol). For old
@@ -441,6 +451,50 @@ def _write_json(path: Path, data: dict) -> None:
     staging.replace(path)
 
 
+def provider_cache_dir(
+    provider: str, cache_dir: Path | None = None, *, environ: dict | None = None
+) -> Path | None:
+    """Resolve a reusable provider-isolated cache; this function does no writes."""
+    if provider not in PROVIDERS:
+        raise RenderError(f"Unknown cache provider: {provider}")
+    if provider == "none":
+        return None
+    env = os.environ if environ is None else environ
+    root = cache_dir or env.get("MANIM_TTS_CACHE_ROOT") or ROOT / "media" / "voiceovers"
+    return Path(root).resolve() / provider
+
+
+def _prepare_cache(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".write-probe-{uuid.uuid4().hex}"
+        with probe.open("xb"):
+            pass
+        probe.unlink()
+    except OSError as exc:
+        raise RenderError(f"Speech cache is not writable: {path}. Choose --cache-dir with write access.") from exc
+
+
+def _audio_artifacts(timeline: dict, run_dir: Path) -> list[dict]:
+    assets = {}
+    for block in timeline["blocks"]:
+        references = block.get("audio", [])
+        if not isinstance(references, list):
+            raise RenderError("Timeline block audio references must be a list.")
+        for reference in references:
+            if not isinstance(reference, dict) or not isinstance(reference.get("path"), str):
+                raise RenderError("Timeline audio reference requires path and sha256.")
+            path = (run_dir / reference["path"]).resolve()
+            if not path.is_relative_to(run_dir / "audio") or not path.is_file():
+                raise RenderError("Timeline audio must reference an existing immutable run-local asset.")
+            digest = _sha256(path)
+            if digest != reference.get("sha256"):
+                raise RenderError("Run-local audio hash does not match its timeline reference.")
+            name = str(path.relative_to(run_dir))
+            assets[name] = {"path": name, "sha256": digest}
+    return [assets[name] for name in sorted(assets)]
+
+
 def build_command(scene_file: Path, scene_name: str, settings: dict, run_dir: Path) -> list[str]:
     """Build a single-scene invocation; output/quality flags cannot leak between runs."""
     return [
@@ -461,6 +515,7 @@ def render(
     run_id: str | None = None,
     require_tex: bool = False,
     source_files: tuple[Path, ...] = (),
+    cache_dir: Path | None = None,
     **options,
 ) -> Path:
     """Render once and return manifest.json; never reuse a directory or old timeline."""
@@ -471,6 +526,9 @@ def render(
         raise RenderError("Scene name must be one Python class identifier.")
     settings = resolve_settings(profile=profile, **options)
     tools = preflight(scene_file, settings, require_tex=require_tex)
+    speech_cache = provider_cache_dir(settings["provider"], cache_dir)
+    if speech_cache is not None:
+        _prepare_cache(speech_cache)
     source = source_snapshot(scene_file, source_files)
     run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", run_id):
@@ -488,8 +546,13 @@ def render(
         "source": source, "settings": settings, "environment": _versions(tools),
         "metrics": {}, "artifacts": {},
     }
+    if speech_cache is not None:
+        manifest["cache"] = {"provider": settings["provider"], "path": str(speech_cache)}
     _write_json(manifest_path, manifest)
     env = os.environ.copy()
+    env.pop("MANIM_TTS_CACHE_DIR", None)
+    if speech_cache is not None:
+        env["MANIM_TTS_CACHE_DIR"] = str(speech_cache)
     for provider, defaults in DEFAULTS.items():
         for key in defaults:
             env.pop(f"{provider.upper()}_TTS_{key.upper()}", None)
@@ -528,11 +591,14 @@ def render(
             expect_audio=settings["provider"] != "none", scene_duration=timeline["scene_duration"],
         )
         _verify_source_snapshot(source)
+        audio = _audio_artifacts(timeline, run_dir)
         manifest["artifacts"] = {
             name: {"path": path.name, "sha256": _sha256(path)}
             for name, path in (("video", run_dir / "video.mp4"), ("timeline", timeline_path))
         }
         manifest["artifacts"]["video"].update(media)
+        if audio:
+            manifest["artifacts"]["audio"] = audio
         manifest["metrics"]["video_seconds"] = media["duration"]
         manifest["status"] = "rendered"
     except Exception as exc:
@@ -560,6 +626,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", choices=PROVIDERS, help="Explicit choice; defaults to MANIM_TTS_PROVIDER or none, never key detection.")
     parser.add_argument("--quality", choices=QUALITIES, help="Overrides MANIM_QUALITY; draft=-ql, production=-qh.")
     parser.add_argument("--output-dir", type=Path, default=Path("media/runs"))
+    parser.add_argument(
+        "--cache-dir", type=Path,
+        help="Reusable speech cache root; appends provider. Overrides MANIM_TTS_CACHE_ROOT, defaults to repository media/voiceovers.",
+    )
     parser.add_argument("--run-id", help="Optional unique ID; existing run directories are rejected.")
     parser.add_argument("--require-tex", action="store_true", help="Preflight latex/dvisvgm even when TeX use is hidden in helpers.")
     parser.add_argument(

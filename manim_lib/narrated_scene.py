@@ -7,6 +7,9 @@ layout, and ``construct()``. ``_finalize()`` remains supported; successful
 ``tear_down()`` also writes the final timeline using the actual scene clock.
 The wrapper supplies MANIM_RUN_ID / MANIM_TIMELINE_PATH / MANIM_VOICEOVER_DIR
 for isolated artifacts. Direct Manim calls retain the class's default paths.
+MANIM_TTS_CACHE_DIR is a separate reusable, provider-scoped speech cache.
+Audio consumed during managed narration is copied to content-addressed run
+assets before Manim reads it; block ``audio`` references identify those copies.
 No API key alone enables narration: choose MANIM_TTS_PROVIDER explicitly.
 
 ``narrate(text, beat_id="proposal")`` optionally identifies a teaching beat.
@@ -26,6 +29,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from manim import Scene
+from manim.utils.sounds import get_full_sound_file_path
 
 from .theme import BACKGROUND
 from .production import _validate_beat_id, resolve_settings
@@ -64,6 +68,7 @@ class NarratedScene(VoiceoverScene):
         self._review_events: list[dict] = []
         self._active_beat_id: str | None = None
         self._narrating = False
+        self._block_audio: list[dict] = []
         self._run_id = os.getenv("MANIM_RUN_ID")
         timeline_path = os.getenv("MANIM_TIMELINE_PATH")
         if bool(self._run_id) != bool(timeline_path):
@@ -74,9 +79,13 @@ class NarratedScene(VoiceoverScene):
         provider = self._tts_settings["provider"]
         service_options = {"transcription_model": None}
         audio_dir = os.getenv("MANIM_VOICEOVER_DIR")
+        self._run_audio_dir = Path(audio_dir).resolve() if audio_dir and self._run_id else None
         if audio_dir:
             Path(audio_dir).mkdir(parents=True, exist_ok=True)
-            service_options["cache_dir"] = Path(audio_dir)
+        cache_dir = os.getenv("MANIM_TTS_CACHE_DIR") or audio_dir
+        if cache_dir:
+            Path(cache_dir).mkdir(parents=True, exist_ok=True)
+            service_options["cache_dir"] = Path(cache_dir)
         if provider not in ("none", "external-gtts") and VoiceoverScene is Scene:
             raise RuntimeError(
                 f"{provider} was explicitly requested but manim-voiceover is not "
@@ -125,7 +134,7 @@ class NarratedScene(VoiceoverScene):
         elif provider == "external-gtts":
             self._external_voiceover = True
             self._external_dir = Path(
-                audio_dir or f"media/voiceovers/{self.external_voiceover_subdir}"
+                cache_dir or f"media/voiceovers/{self.external_voiceover_subdir}"
             ).resolve()
             self._external_dir.mkdir(parents=True, exist_ok=True)
 
@@ -150,6 +159,7 @@ class NarratedScene(VoiceoverScene):
         if self._narrating:
             raise ValueError("Narration blocks must not nest or overlap.")
         self._narrating = True
+        self._block_audio = []
         self._active_beat_id = beat_id
         index = len(self._review_blocks)
         start = self.time
@@ -177,14 +187,14 @@ class NarratedScene(VoiceoverScene):
                 remaining = duration - (self.time - track_start)
                 if remaining > 0:
                     self.wait(remaining)
-                self._external_tracks.append(
-                    {
-                        "start": track_start,
-                        "duration": duration,
-                        "file": str(audio_path),
-                        "text": text,
-                    }
-                )
+                track = {
+                    "start": track_start, "duration": duration,
+                    "file": str(audio_path), "text": text,
+                }
+                if self._block_audio:
+                    track["file"] = str(self.review_timeline_path.parent / self._block_audio[0]["path"])
+                    track["sha256"] = self._block_audio[0]["sha256"]
+                self._external_tracks.append(track)
             else:
                 duration = max(1.8, len(text.split()) / 2.65)
                 yield SimpleNamespace(duration=duration)
@@ -199,9 +209,33 @@ class NarratedScene(VoiceoverScene):
             }
             if beat_id is not None:
                 block["beat_id"] = beat_id
+            if self._block_audio:
+                block["audio"] = self._block_audio
             self._review_blocks.append(block)
             self._active_beat_id = None
             self._narrating = False
+
+    def add_sound(self, sound_file: str | Path, *args, **kwargs) -> None:
+        """Snapshot managed narration bytes before the renderer consumes them."""
+        if getattr(self, "_run_audio_dir", None) is not None and self._narrating:
+            source = get_full_sound_file_path(sound_file)
+            data = source.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            destination = self._run_audio_dir / f"{digest}{source.suffix.lower()}"
+            if destination.exists():
+                if destination.read_bytes() != data:
+                    raise RuntimeError("Immutable run audio was modified after publication.")
+            else:
+                with destination.open("xb") as output:
+                    output.write(data)
+            name = (
+                str(destination.relative_to(self.review_timeline_path.parent))
+                if destination.is_relative_to(self.review_timeline_path.parent)
+                else str(destination)
+            )
+            self._block_audio.append({"path": name, "sha256": digest})
+            sound_file = str(destination)
+        super().add_sound(sound_file, *args, **kwargs)
 
     def record_visual_event(self, label: str, *, beat_id: str | None = None) -> None:
         """Record a meaningful visual change at the current rendered scene time.
@@ -245,7 +279,10 @@ class NarratedScene(VoiceoverScene):
                 "scene_duration": self.time,
                 "tracks": self._external_tracks,
             }
-            (self._external_dir / "manifest.json").write_text(
+            if self._run_id:
+                manifest.update(schema_version=1, run_id=self._run_id)
+            manifest_dir = self._run_audio_dir or self._external_dir
+            (manifest_dir / "manifest.json").write_text(
                 json.dumps(manifest, indent=2),
                 encoding="utf-8",
             )

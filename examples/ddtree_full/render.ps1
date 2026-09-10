@@ -7,7 +7,8 @@ param(
     [ValidateSet("none", "openrouter", "gtts", "external-gtts", "openai", "azure")]
     [string]$Provider,
     [string]$OutputDir,
-    [string]$RunId
+    [string]$RunId,
+    [string]$CacheDir
 )
 
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -23,5 +24,6 @@ if ($Silent) {
 }
 if ($OutputDir) { $renderArgs += @("--output-dir", $OutputDir) }
 if ($RunId) { $renderArgs += @("--run-id", $RunId) }
+if ($CacheDir) { $renderArgs += @("--cache-dir", $CacheDir) }
 & "$root\scripts\render.ps1" @renderArgs
 exit $LASTEXITCODE
