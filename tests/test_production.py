@@ -121,6 +121,15 @@ def test_ffmpeg_prefers_native_then_imageio(monkeypatch):
     assert p.find_ffmpeg() == "imageio-ffmpeg"
 
 
+def test_cache_directory_precedence_and_provider_isolation(tmp_path):
+    env = {"MANIM_TTS_CACHE_ROOT": str(tmp_path / "environment-cache")}
+    assert p.provider_cache_dir("gtts", environ=env) == tmp_path / "environment-cache" / "gtts"
+    assert p.provider_cache_dir("openai", tmp_path / "explicit", environ=env) == tmp_path / "explicit" / "openai"
+    assert p.provider_cache_dir("openrouter", environ={}) == p.ROOT / "media" / "voiceovers" / "openrouter"
+    assert p.provider_cache_dir("none", tmp_path / "unused", environ=env) is None
+    assert len({p.provider_cache_dir(provider, tmp_path) for provider in p.PROVIDERS[1:]}) == len(p.PROVIDERS) - 1
+
+
 def test_native_tools_preflight(tmp_path, monkeypatch):
     source = tmp_path / "scene.py"
     source.write_text('MathTex("x")', encoding="utf-8")
@@ -242,6 +251,7 @@ def test_manifest_config_redaction_hashes_identity_and_metrics(fake_render, monk
     assert "another-never-recorded" not in manifest_path.read_text()
     assert "OPENROUTER_TTS_STYLE" not in seen["env"]
     assert seen["env"]["MANIM_TTS_PROVIDER"] == "none"
+    assert "MANIM_TTS_CACHE_DIR" not in seen["env"]
     assert seen["env"]["MANIM_RUN_ID"] == "run-test"
     assert seen["env"]["MANIM_TIMELINE_PATH"] == str(manifest_path.parent / "timeline.json")
     assert seen["command"][0] == sys.executable
@@ -252,6 +262,34 @@ def test_manifest_config_redaction_hashes_identity_and_metrics(fake_render, monk
     assert "accepted" not in manifest
     with pytest.raises(p.RenderError, match="already exists"):
         p.render(source, "LocalScene", output_dir=output, run_id="run-test")
+
+
+def test_managed_configurations_reuse_cache_without_sharing_provider_json(fake_render, local_video):
+    source, output, seen = fake_render
+    shutil.copyfile(local_video("with-audio.mp4", audio=True), source.parent / "fixture.mp4")
+    cache_root = source.parent / "shared-cache"
+    configurations = []
+    for index, provider in enumerate(("gtts", "gtts", "openai", "openrouter")):
+        manifest_path = p.render(
+            source, "LocalScene", profile="production", provider=provider,
+            output_dir=output / str(index), run_id=f"run-{index}", cache_dir=cache_root,
+        )
+        configurations.append(seen["env"].copy())
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["cache"] == {"provider": provider, "path": str(cache_root / provider)}
+    assert configurations[0]["MANIM_TTS_CACHE_DIR"] == configurations[1]["MANIM_TTS_CACHE_DIR"]
+    assert len({configurations[index]["MANIM_TTS_CACHE_DIR"] for index in (0, 2, 3)}) == 3
+    assert len({env["MANIM_VOICEOVER_DIR"] for env in configurations}) == 4
+    assert all(env["MANIM_TTS_CACHE_DIR"] != env["MANIM_VOICEOVER_DIR"] for env in configurations)
+
+
+def test_cache_write_failure_is_preflighted(fake_render):
+    source, output, _ = fake_render
+    cache_root = source.parent / "not-a-directory"
+    cache_root.write_text("file", encoding="utf-8")
+    with pytest.raises(p.RenderError, match="Speech cache is not writable"):
+        p.render(source, "LocalScene", provider="gtts", cache_dir=cache_root, output_dir=output)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("failure", ["missing-timeline", "stale-timeline", "missing-video", "nonzero"])
@@ -287,11 +325,12 @@ def test_cli_parsing_and_exit_behavior(monkeypatch, tmp_path):
         seen.update(kwargs)
         return tmp_path / "manifest.json"
     monkeypatch.setattr(p, "render", render)
-    assert p.main(["scene with spaces.py", "A", "--profile", "production", "--provider", "gtts", "--quality=-qm", "--source-file", "narration.txt"]) == 0
+    assert p.main(["scene with spaces.py", "A", "--profile", "production", "--provider", "gtts", "--quality=-qm", "--source-file", "narration.txt", "--cache-dir", "shared cache"]) == 0
     assert seen["scene_file"] == Path("scene with spaces.py")
     assert seen["quality"] == "-qm"
     assert seen["profile"] == "production"
     assert seen["source_files"] == [Path("narration.txt")]
+    assert seen["cache_dir"] == Path("shared cache")
     def fail(**kwargs):
         raise p.RenderError("subprocess failed", 7)
     monkeypatch.setattr(p, "render", fail)
@@ -364,7 +403,7 @@ def test_ddtree_wrapper_uses_explicit_draft_and_preserves_silent_quality(tmp_pat
     result = tmp_path / "args.json"
     env = {**os.environ, "MANIM_PYTHON": sys.executable, "ARGUMENT_RECORD": str(result)}
     completed = subprocess.run(
-        [powershell, "-NoProfile", "-File", str(example_dir / "render.ps1"), "-Quality", "-ql", "-Silent"],
+        [powershell, "-NoProfile", "-File", str(example_dir / "render.ps1"), "-Quality", "-ql", "-Silent", "-CacheDir", "shared cache"],
         env=env, capture_output=True, text=True,
     )
     assert completed.returncode == 0, completed.stderr
@@ -373,6 +412,7 @@ def test_ddtree_wrapper_uses_explicit_draft_and_preserves_silent_quality(tmp_pat
     assert arguments[arguments.index("--profile") + 1] == "draft"
     assert arguments[arguments.index("--provider") + 1] == "none"
     assert "--require-tex" in arguments
+    assert arguments[arguments.index("--cache-dir") + 1] == "shared cache"
 
 
 def test_real_silent_draft_smoke_is_run_bound_without_credentials(tmp_path, monkeypatch):
@@ -410,11 +450,17 @@ def test_real_production_mux_uses_only_locally_generated_audio(tmp_path, provide
         check=True, capture_output=True,
     )
     source = tmp_path / "local_audio_scene.py"
+    synthesis_count = tmp_path / "synthesis-count.txt"
     source.write_text(
         "import shutil\n"
+        "from pathlib import Path\n"
         "from types import SimpleNamespace\n"
         "import gtts\n"
-        f"gtts.gTTS = lambda *args, **kwargs: SimpleNamespace(save=lambda path: shutil.copyfile({str(audio)!r}, path))\n"
+        f"counter = Path({str(synthesis_count)!r})\n"
+        "def local_tts(*args, **kwargs):\n"
+        "    counter.write_text(str(int(counter.read_text()) + 1 if counter.exists() else 1))\n"
+        f"    return SimpleNamespace(save=lambda path: shutil.copyfile({str(audio)!r}, path))\n"
+        "gtts.gTTS = local_tts\n"
         "from manim import Circle, Create\n"
         "from manim_lib.narrated_scene import NarratedScene\n"
         "class LocalAudioScene(NarratedScene):\n"
@@ -427,6 +473,7 @@ def test_real_production_mux_uses_only_locally_generated_audio(tmp_path, provide
     manifest_path = p.render(
         source, "LocalAudioScene", profile="production", provider=provider,
         quality="-ql", output_dir=tmp_path / "runs", run_id="local-audio",
+        cache_dir=tmp_path / "shared-cache",
     )
     manifest = json.loads(manifest_path.read_text())
     assert manifest["status"] == "rendered"
@@ -437,6 +484,42 @@ def test_real_production_mux_uses_only_locally_generated_audio(tmp_path, provide
     assert video["audio_duration"] > 0
     assert abs(video["audio_duration"] - video["duration"]) < 0.15
     assert list((manifest_path.parent / "audio").glob("*.mp3"))
+    second_path = p.render(
+        source, "LocalAudioScene", profile="production", provider=provider,
+        quality="-ql", output_dir=tmp_path / "runs", run_id="same-narration",
+        cache_dir=tmp_path / "shared-cache",
+    )
+    second = json.loads(second_path.read_text())
+    assert synthesis_count.read_text() == "1"
+    assert manifest["cache"] == second["cache"]
+    assert manifest["artifacts"]["audio"] == second["artifacts"]["audio"]
+    assert manifest["artifacts"]["timeline"]["sha256"] != second["artifacts"]["timeline"]["sha256"]
+    for cached in Path(manifest["cache"]["path"]).glob("*.mp3"):
+        cached.write_bytes(b"later cache mutation")
+    for path, document in ((manifest_path, manifest), (second_path, second)):
+        data = json.loads((path.parent / "timeline.json").read_text())
+        assert data["blocks"][0]["audio"] == document["artifacts"]["audio"]
+        for artifact in document["artifacts"]["audio"]:
+            run_audio = path.parent / artifact["path"]
+            assert run_audio.read_bytes() == audio.read_bytes()
+            assert hashlib.sha256(run_audio.read_bytes()).hexdigest() == artifact["sha256"]
+
+
+def test_audio_references_must_bind_immutable_run_assets(tmp_path):
+    root = tmp_path / "run"
+    (root / "audio").mkdir(parents=True)
+    asset = root / "audio" / "fixture.mp3"
+    asset.write_bytes(b"local fixture")
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    data = timeline()
+    data["blocks"][0]["audio"] = [{"path": str(Path("audio") / "fixture.mp3"), "sha256": digest}]
+    assert p._audio_artifacts(data, root) == data["blocks"][0]["audio"]
+    asset.write_bytes(b"modified")
+    with pytest.raises(p.RenderError, match="hash"):
+        p._audio_artifacts(data, root)
+    data["blocks"][0]["audio"][0]["path"] = str(tmp_path / "shared-cache.mp3")
+    with pytest.raises(p.RenderError, match="run-local"):
+        p._audio_artifacts(data, root)
 
 
 def test_source_snapshot_tracks_imports_storyboards_and_declared_inputs(tmp_path, monkeypatch):
