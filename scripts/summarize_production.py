@@ -8,6 +8,7 @@ import json
 import math
 import sys
 from collections.abc import Callable, Mapping
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -97,7 +98,8 @@ def _bound_validator(
         manifest_path, review_path = manifest_paths[run_id], review_paths[run_id]
         if load_record(manifest_path) != manifest or load_record(review_path) != review:
             raise MetricsError(f"{run_id}: input records changed during reporting")
-        result = verify_acceptance(manifest_path, review_path)
+        with redirect_stdout(sys.stderr):
+            result = verify_acceptance(manifest_path, review_path)
         if (
             not isinstance(result, Mapping)
             or result.get("status") != "accepted"

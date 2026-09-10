@@ -472,6 +472,25 @@ def test_bound_adapter_verifies_current_paths_and_detects_changed_inputs(tmp_pat
         validate(record, evidence)
 
 
+def test_review_diagnostics_cannot_contaminate_cli_json_stdout(tmp_path, monkeypatch, capsys):
+    record = manifest()
+    evidence = review(record)
+    manifest_path = write_json(tmp_path, "manifest.json", record)
+    review_path = write_json(tmp_path, "review.json", evidence)
+    adapter = ModuleType("manim_lib.review")
+
+    def verify_acceptance(*_):
+        print("Optional multimedia diagnostic")
+        return evidence
+
+    adapter.verify_acceptance = verify_acceptance
+    monkeypatch.setitem(sys.modules, "manim_lib.review", adapter)
+    assert cli.main([str(manifest_path), "--review", str(review_path)]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["totals"]["accepted_outputs"] == 1
+    assert captured.err == "Optional multimedia diagnostic\n"
+
+
 @pytest.mark.parametrize(
     "result",
     [True, {}, {"status": "technically_verified", "run_id": "run-1"},
