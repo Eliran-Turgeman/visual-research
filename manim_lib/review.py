@@ -320,6 +320,37 @@ def validate_human_evidence(evidence: dict, record: dict, record_sha256: str) ->
             raise ReviewError(f"Unresolved {finding['severity']} finding prevents acceptance: {finding['id']}.")
 
 
+def _validate_teaching_binding(
+    contract_path: Path, validation_path: Path, record: dict, evidence: dict,
+) -> dict:
+    validation_reference = artifact_reference(validation_path)
+    envelope = read_json(validation_path)
+    if type(envelope.get("schema_version")) is not int or envelope["schema_version"] != 1:
+        raise ReviewError("Teaching validation schema_version must be 1.")
+    result = envelope.get("validation")
+    if (
+        envelope.get("status") != "passed" or not isinstance(result, dict)
+        or result.get("valid") is not True or result.get("errors") != []
+    ):
+        raise ReviewError("Teaching validation requires status=passed, validation.valid=true and no errors.")
+    bound_contract = verify_reference(envelope.get("contract"), validation_path.parent, "teaching contract")
+    if bound_contract != contract_path.resolve():
+        raise ReviewError("Teaching validation references a different contract.")
+    verify_reference(envelope.get("timeline"), validation_path.parent, "teaching timeline")
+    if envelope["timeline"]["sha256"] != record["artifacts"]["timeline"]["sha256"]:
+        raise ReviewError("Teaching validation timeline differs from the reviewed manifest timeline.")
+    if envelope.get("run_id") != record["run_id"]:
+        raise ReviewError("Teaching validation requires the reviewed run_id (legacy unbound reports cannot be accepted).")
+    contract_reference = artifact_reference(contract_path)
+    if evidence.get("teaching_contract_sha256") != contract_reference["sha256"]:
+        raise ReviewError("Human evidence must bind teaching_contract_sha256 explicitly.")
+    if artifact_reference(validation_path) != validation_reference:
+        raise ReviewError("Teaching validation changed during acceptance.")
+    if envelope["contract"]["sha256"] != contract_reference["sha256"]:
+        raise ReviewError("Teaching contract changed during acceptance.")
+    return {"contract": contract_reference, "validation": validation_reference}
+
+
 def accept_production(
     manifest_path: Path, record_path: Path, evidence_path: Path,
     *, teaching_contract: Path | None = None, teaching_validation: Path | None = None,
@@ -334,7 +365,11 @@ def accept_production(
     resolved); resolved findings also require resolution/resolved_by/resolved_at.
     Both open blocker and open major findings prevent acceptance.
     When binding a teaching contract, evidence.teaching_contract_sha256 must
-    explicitly name its digest. Preserve the original technical record file.
+    explicitly name its digest. The validation artifact must contain
+    schema_version=1, status='passed', matching run_id, contract and timeline
+    {path, sha256} references, and validation={valid: true, errors: [], ...}.
+    Its timeline hash must match the manifest; raw/unbound validator output
+    cannot authorize acceptance. Preserve the original technical record file.
     """
     record = read_json(record_path)
     record_digest = sha256_file(record_path)
@@ -356,20 +391,7 @@ def accept_production(
     if (teaching_contract is None) != (teaching_validation is None):
         raise ReviewError("Provide both teaching contract and teaching validation artifacts.")
     if teaching_contract is not None:
-        validation = read_json(teaching_validation)
-        if validation.get("schema_version") != 1 or validation.get("status") != "passed":
-            raise ReviewError("Teaching validation must be schema_version=1 and status=passed.")
-        contract_path = verify_reference(validation.get("contract"), teaching_validation.parent, "teaching contract")
-        if contract_path != teaching_contract.resolve():
-            raise ReviewError("Teaching validation references a different contract.")
-        if validation.get("run_id") not in (None, record["run_id"]):
-            raise ReviewError("Teaching validation run_id differs from the reviewed run.")
-        if evidence.get("teaching_contract_sha256") != sha256_file(teaching_contract):
-            raise ReviewError("Human evidence must bind teaching_contract_sha256 explicitly.")
-        record["teaching"] = {
-            "contract": artifact_reference(teaching_contract),
-            "validation": artifact_reference(teaching_validation),
-        }
+        record["teaching"] = _validate_teaching_binding(teaching_contract, teaching_validation, record, evidence)
     record.update(
         status="accepted", accepted_at=utc_now(), technical_review_sha256=record_digest,
         technical_review={"path": str(record_path.resolve()), "sha256": record_digest},
