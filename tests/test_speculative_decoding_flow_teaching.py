@@ -1,6 +1,6 @@
 """The executed flow must describe its depicted block-parallel drafter."""
 
-from manim import Text, tempconfig
+from manim import Text, Wait, tempconfig
 import pytest
 
 from manim_lib.layout import contains
@@ -27,6 +27,8 @@ def executed_flow(tmp_path_factory):
 
         def play(self, *animations, **kwargs):
             super().play(*animations, **kwargs)
+            if all(isinstance(animation, Wait) for animation in animations):
+                return
             family = self.get_mobject_family_members()
             self.snapshots.append({
                 "block": len(self._review_blocks),

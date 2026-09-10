@@ -6,6 +6,8 @@ from pathlib import Path
 from manim import tempconfig
 import pytest
 
+from manim_lib.narrated_scene import NarratedScene
+
 from test_ddtree_displayed_state import _load_scene
 
 
@@ -14,10 +16,13 @@ def timeline_probe(monkeypatch, tmp_path):
     module = _load_scene("ddtree_dflash")
     legacy_path = tmp_path / "legacy.json"
     monkeypatch.setattr(module, "REVIEW_TIMELINE_PATH", legacy_path)
+    monkeypatch.setattr(module.DDTreeDFlashExplainer, "review_timeline_path", legacy_path)
+    monkeypatch.setenv("MANIM_PROFILE", "draft")
     monkeypatch.setenv("MANIM_TTS_PROVIDER", "none")
     monkeypatch.delenv("MANIM_RUN_ID", raising=False)
     monkeypatch.delenv("MANIM_TIMELINE_PATH", raising=False)
     monkeypatch.delenv("MANIM_VOICEOVER_DIR", raising=False)
+    monkeypatch.delenv("MANIM_TTS_CACHE_DIR", raising=False)
 
     class Probe(module.DDTreeDFlashExplainer):
         def opening(self):
@@ -95,6 +100,30 @@ def test_managed_timeline_preserves_optional_beat_ids(
     assert timeline["blocks"][0]["beat_id"] == "target-emits"
 
 
+def test_scene_uses_shared_narration_and_preserves_visual_events(
+    timeline_probe, monkeypatch, tmp_path,
+):
+    Probe, _ = timeline_probe
+    assert Probe.narrate is NarratedScene.narrate
+    assert Probe.paced is NarratedScene.paced
+    output = tmp_path / "events.json"
+    monkeypatch.setenv("MANIM_RUN_ID", "events-run")
+    monkeypatch.setenv("MANIM_TIMELINE_PATH", str(output))
+
+    def opening(self):
+        with self.narrate("The target emits one token.", beat_id="target-emits"):
+            self.wait(0.2)
+            self.record_visual_event("token emitted")
+
+    monkeypatch.setattr(Probe, "opening", opening)
+    Probe().render()
+    timeline = json.loads(output.read_text(encoding="utf-8"))
+    assert timeline["events"] == [{
+        "time": pytest.approx(0.2), "label": "token emitted", "beat_id": "target-emits",
+    }]
+    assert timeline["blocks"][0]["duration"] > 0.2
+
+
 def test_failed_scene_does_not_publish_a_managed_timeline(
     timeline_probe, monkeypatch, tmp_path,
 ):
@@ -121,6 +150,7 @@ def test_failed_publication_preserves_previous_file_and_removes_pending_json(
     Probe, _ = timeline_probe
     output = tmp_path / "existing-timeline.json"
     output.write_text("previous complete output", encoding="utf-8")
+    monkeypatch.setenv("MANIM_RUN_ID", "publication-run")
     monkeypatch.setenv("MANIM_TIMELINE_PATH", str(output))
     replace = Path.replace
 
