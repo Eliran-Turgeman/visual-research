@@ -30,6 +30,8 @@ Schema v1 (see examples\\ddtree_full\\teaching.json):
 ``timeline_mapping`` is complete, partial, or unavailable; partial/unavailable
 requires mapping_note. No timing/event mapping is invented for uninstrumented
 scenes. Optional timeline blocks follow the repository's legacy or v1 format.
+Legacy blocks may omit duration (derived from end minus start); explicit
+durations must agree within one millisecond. Zero-duration blocks are invalid.
 Text, index/order, event-data and mathematical drift are hard errors. Duration
 ranges are review warnings, even when exceeded; explain rather than cut speech.
 Source digests (optional sha256, UTF-8 with LF newlines) detect content drift,
@@ -522,10 +524,12 @@ def _validate_timeline(timeline, beats, mapping, issue):
     if "run_id" in timeline and not _text(timeline["run_id"]):
         issue("timeline_shape", "timeline.run_id", "When supplied, run_id must be a nonempty string")
     duration = timeline.get("scene_duration")
-    if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0:
-        issue("timeline_shape", "timeline.scene_duration", "Expected finite nonnegative scene duration")
+    if type(duration) not in (int, float) or not math.isfinite(duration) or duration <= 0:
+        issue("timeline_shape", "timeline.scene_duration", "Expected finite positive scene duration")
         return
     blocks = timeline["blocks"]
+    if not blocks:
+        issue("timeline_shape", "timeline.blocks", "Empty narration is not temporal teaching evidence")
     if mapping == "complete" and len(blocks) != len(beats):
         issue("timeline_count", "timeline.blocks", "Block count differs from the complete beat mapping")
     last_end = 0
@@ -538,14 +542,19 @@ def _validate_timeline(timeline, beats, mapping, issue):
             issue("timeline_order", path, "Index must match the block's rendered order")
         if not _text(block.get("text")):
             issue("timeline_shape", path, "Narration text must be nonempty")
-        values = [block.get(key) for key in ("start", "end", "duration")]
+        values = [block.get(key) for key in ("start", "end")]
+        if "duration" in block:
+            values.append(block["duration"])
         if not all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in values):
             issue("timeline_shape", path, "Expected finite nonnegative timestamps")
             continue
-        start, end, block_duration = values
+        start, end = values[:2]
+        block_duration = block.get("duration", end - start)
+        if end <= start or block_duration <= 0:
+            issue("timeline_duration", path, "Narration blocks must have positive duration")
         if end < start or start < last_end - 1e-6 or end > duration + 1e-6:
             issue("timeline_order", path, "Blocks must be ordered, nonoverlapping and within scene duration")
-        if not math.isclose(end - start, block_duration, abs_tol=1e-6):
+        if not math.isclose(end - start, block_duration, rel_tol=0, abs_tol=0.001):
             issue("timeline_duration", path, "Duration differs from end minus start")
         last_end = end
     events = timeline.get("events", [])
@@ -583,6 +592,8 @@ def _validate_timeline(timeline, beats, mapping, issue):
             issue("beat_drift", f"beats.{bid}", "Timeline beat_id disagrees with mapped order")
         bounds = beat.get("duration_range")
         actual_duration = block.get("duration")
+        if actual_duration is None and all(type(block.get(key)) in (int, float) for key in ("start", "end")):
+            actual_duration = block["end"] - block["start"]
         if bounds and type(actual_duration) in (int, float) and not bounds[0] <= actual_duration <= bounds[1]:
             explanation = beat.get("duration_explanation")
             issue(

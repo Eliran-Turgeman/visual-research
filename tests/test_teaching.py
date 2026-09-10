@@ -256,10 +256,33 @@ def test_optional_event_mapping_checks_data_and_cause_order():
 
 def test_legacy_timeline_accepted_without_optional_fields():
     document = contract()
-    report = teaching.validate_contract(document, timeline=timeline_for(document))
+    timeline = timeline_for(document)
+    for block in timeline["blocks"]:
+        del block["duration"]
+    report = teaching.validate_contract(document, timeline=timeline)
     assert report["valid"], report["errors"]
     assert report["evidence"]["audiovisual_fidelity"] == "not_assessed"
     assert not any(check["check"] == "timeline_comparison" for check in report["omitted_checks"])
+
+
+def test_empty_and_zero_time_narration_are_not_evidence():
+    document = contract()
+    assert "timeline_shape" in codes(teaching.validate_contract(document, timeline={"scene_duration": 5, "blocks": []}))
+    timeline = timeline_for(document)
+    timeline["blocks"][0].update({"start": 0, "end": 0, "duration": 0})
+    assert "timeline_duration" in codes(teaching.validate_contract(document, timeline=timeline))
+    timeline = timeline_for(document)
+    timeline["scene_duration"] = 0
+    assert "timeline_shape" in codes(teaching.validate_contract(document, timeline=timeline))
+
+
+def test_explicit_duration_uses_absolute_millisecond_tolerance():
+    document = contract()
+    timeline = timeline_for(document)
+    timeline["blocks"][0]["duration"] += 0.0009
+    assert teaching.validate_contract(document, timeline=timeline)["valid"]
+    timeline["blocks"][0]["duration"] += 0.0002
+    assert "timeline_duration" in codes(teaching.validate_contract(document, timeline=timeline))
 
 
 def test_source_digest_is_drift_detection_not_claim_entailment():
