@@ -1,11 +1,12 @@
 """Managed legacy-scene cache paths, with no live speech-service calls."""
 
 import json
+import hashlib
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 
-from manim import tempconfig
+from manim import Scene, tempconfig
 from manim_voiceover.services.base import SpeechService
 import pytest
 
@@ -44,10 +45,14 @@ def test_services_use_explicit_path_cache_across_unique_run_media(
     monkeypatch.setenv("MANIM_TTS_PROVIDER", provider)
     cache = tmp_path / "persistent-cache" / provider
     if managed:
-        monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(cache))
+        monkeypatch.setenv("MANIM_TTS_CACHE_DIR", str(cache))
 
     for run in ("first", "second"):
         media = tmp_path / run / "media"
+        if managed:
+            monkeypatch.setenv("MANIM_RUN_ID", run)
+            monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / run / "timeline.json"))
+            monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(tmp_path / run / "audio"))
         with tempconfig({"media_dir": str(media)}):
             scene = Probe()
             scene.setup()
@@ -91,11 +96,11 @@ def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
 ):
     Probe, legacy_timeline = timeline_probe
     cache = tmp_path / "persistent-cache" / "external-gtts"
-    monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(cache))
+    monkeypatch.setenv("MANIM_TTS_CACHE_DIR", str(cache))
     monkeypatch.setenv("MANIM_TTS_PROVIDER", "external-gtts")
     attachments = []
     monkeypatch.setattr(
-        Probe, "add_sound",
+        Scene, "add_sound",
         lambda self, filename, time_offset=0: attachments.append((filename, time_offset)),
     )
     audio_paths = []
@@ -103,28 +108,42 @@ def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
         monkeypatch.setenv("MANIM_RUN_ID", run)
         output = tmp_path / run / "timeline.json"
         monkeypatch.setenv("MANIM_TIMELINE_PATH", str(output))
+        run_audio = output.parent / "audio"
+        monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(run_audio))
         with tempconfig({"media_dir": str(tmp_path / run / "media")}):
             scene = Probe()
             scene.setup()
             assert scene._external_dir == cache
             scene.render()
         assert scene._external_dir == cache
-        manifest = json.loads((cache / "manifest.json").read_text(encoding="utf-8"))
+        manifest = json.loads((run_audio / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["run_id"] == run
         assert manifest["scene_duration"] == pytest.approx(scene.time)
         assert len(manifest["tracks"]) == 1
         track = manifest["tracks"][0]
         audio_path = Path(track["file"])
-        assert audio_path.parent == cache
+        assert audio_path.parent == run_audio
         assert audio_path.is_file()
         assert track["text"] == "The target emits one token."
         assert track["start"] == 0.0
         assert track["duration"] == pytest.approx(0.2)
-        assert json.loads(output.read_text(encoding="utf-8"))["run_id"] == run
+        timeline = json.loads(output.read_text(encoding="utf-8"))
+        assert timeline["run_id"] == run
+        digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
+        assert timeline["blocks"][0]["audio"] == [{
+            "path": str(audio_path.relative_to(output.parent)), "sha256": digest,
+        }]
+        assert track["sha256"] == digest
         audio_paths.append(audio_path)
-    assert audio_paths[0] == audio_paths[1]
+    assert audio_paths[0] != audio_paths[1]
+    assert audio_paths[0].name == audio_paths[1].name
     assert attachments == [(str(path), 0) for path in audio_paths]
     assert offline_external_gtts == ["The target emits one token."]
     assert not legacy_timeline.exists()
+    assert not (cache / "manifest.json").exists()
+    cached_audio, = cache.glob("*.mp3")
+    cached_audio.write_bytes(b"later shared-cache corruption")
+    assert all(path.read_bytes() == b"offline test audio" for path in audio_paths)
 
 
 @pytest.mark.parametrize("managed", [False, True])
@@ -150,7 +169,7 @@ def test_managed_external_audio_is_attached_once_at_block_start(
             assert len(attachments) == int(managed)
             self.wait(0.1)
 
-    monkeypatch.setattr(Probe, "add_sound", add_sound)
+    monkeypatch.setattr(Scene, "add_sound", add_sound)
     monkeypatch.setattr(Probe, "opening", opening)
     scene = Probe()
     scene.render()
@@ -172,7 +191,7 @@ def test_managed_external_audio_is_attached_once_at_block_start(
         assert manifest["tracks"] == scene._external_tracks
 
 
-def test_silent_setup_does_not_create_an_unused_cache(
+def test_silent_setup_creates_no_audio_artifacts(
     timeline_probe, monkeypatch, tmp_path,
 ):
     Probe, _ = timeline_probe
@@ -182,4 +201,20 @@ def test_silent_setup_does_not_create_an_unused_cache(
     scene.setup()
     assert not scene._voiceover_enabled
     assert not scene._external_voiceover
-    assert not cache.exists()
+    assert not list(cache.rglob("*"))
+
+
+def test_legacy_post_mux_policy_does_not_suppress_unrelated_sound_effects(
+    timeline_probe, monkeypatch, tmp_path,
+):
+    Probe, _ = timeline_probe
+    monkeypatch.setenv("MANIM_TTS_PROVIDER", "external-gtts")
+    monkeypatch.setenv("MANIM_TTS_CACHE_DIR", str(tmp_path / "external-cache"))
+    effects = []
+    monkeypatch.setattr(
+        Scene, "add_sound", lambda self, filename: effects.append(filename),
+    )
+    scene = Probe()
+    scene.setup()
+    scene.add_sound("effect.wav")
+    assert effects == ["effect.wav"]

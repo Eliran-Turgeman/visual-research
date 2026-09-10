@@ -103,7 +103,10 @@ def executed_scenes(tmp_path_factory):
         "progress_bar": "none",
     }):
         patch.setenv("MANIM_TTS_PROVIDER", "none")
+        patch.delenv("MANIM_RUN_ID", raising=False)
+        patch.delenv("MANIM_TIMELINE_PATH", raising=False)
         dflash = DFlashMath()
+        dflash.review_timeline_path = media / "dflash_timeline.json"
         dflash.render()
         visual = Visual()
         visual.review_timeline_path = media / "timeline.json"
