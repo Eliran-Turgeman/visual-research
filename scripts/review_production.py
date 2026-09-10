@@ -20,6 +20,8 @@ actual manifest timeline; a hand-authored success report is not semantic proof.
 The accepted record retains teaching.recomputed_validation including warnings
 and omitted checks. Source content is not fetched or independently inspected;
 unperformed source/event checks and human judgments remain explicitly unassessed.
+Optional manifest audio-snapshot lists and timeline block audio references are
+hash-checked and retained; absent snapshot metadata remains legacy-compatible.
 """
 
 from __future__ import annotations

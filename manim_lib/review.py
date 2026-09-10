@@ -210,6 +210,31 @@ def verify_reference(reference: object, base: Path, label: str) -> Path:
     return path
 
 
+def _verify_audio_snapshots(artifacts: dict, timeline: dict, manifest_dir: Path, timeline_dir: Path) -> list[dict]:
+    def references(raw: object, base: Path, label: str) -> list[dict]:
+        if not isinstance(raw, list):
+            raise ReviewError(f"{label} must be a list of audio artifact references.")
+        return [
+            {"path": str(verify_reference(ref, base, label)), "sha256": ref["sha256"]}
+            for ref in raw
+        ]
+
+    declared = references(artifacts["audio"], manifest_dir, "manifest audio") if "audio" in artifacts else None
+    if declared == []:
+        raise ReviewError("Manifest audio must be omitted when no actual audio snapshots exist.")
+    recorded = [
+        ref for block in timeline["blocks"] if "audio" in block
+        for ref in references(block["audio"], timeline_dir, f"block {block['index']} audio")
+    ]
+    if declared is not None and any(ref not in declared for ref in recorded):
+        raise ReviewError("Timeline audio snapshot is absent from the manifest audio artifacts.")
+    result = []
+    for ref in declared if declared is not None else recorded:
+        if ref not in result:
+            result.append(ref)
+    return result
+
+
 def inspect_production(manifest_path: Path) -> dict:
     """Verify manifest identity, artifact hashes, timeline, durations and decode."""
     from scripts.extract_narration_frames import validate_timeline
@@ -231,25 +256,32 @@ def inspect_production(manifest_path: Path) -> dict:
         raise ReviewError("Manifest artifacts must be an object.")
     video = verify_reference(artifacts.get("video"), manifest_path.parent, "video")
     timeline_path = verify_reference(artifacts.get("timeline"), manifest_path.parent, "timeline")
-    timeline = validate_timeline(read_json(timeline_path))
+    timeline_document = read_json(timeline_path)
+    timeline = validate_timeline(timeline_document)
     if timeline.run_id != run_id:
         raise ReviewError("Timeline run_id must match manifest run_id (legacy extraction is still supported).")
+    audio = _verify_audio_snapshots(artifacts, timeline_document, manifest_path.parent, timeline_path.parent)
     media = probe_media(video)
     validate_video_timing(media, timeline.scene_duration, require_audio=manifest["profile"] == "production")
     validate_decode(video)
     for key in ("video", "timeline"):
         verify_reference(artifacts[key], manifest_path.parent, key)
+    _verify_audio_snapshots(artifacts, timeline_document, manifest_path.parent, timeline_path.parent)
     if artifact_reference(manifest_path) != manifest_reference:
         raise ReviewError("Manifest changed during inspection.")
     return {
         "schema_version": 1, "run_id": run_id, "profile": manifest["profile"],
         "status": "technically_verified", "created_at": utc_now(),
         "manifest": manifest_reference,
-        "artifacts": {"video": artifact_reference(video), "timeline": artifact_reference(timeline_path)},
+        "artifacts": {
+            "video": artifact_reference(video), "timeline": artifact_reference(timeline_path),
+            **({"audio": audio} if audio else {}),
+        },
         "media": media,
         "technical": {"status": "passed", "checks": [
             "artifact_hashes", "run_identity", "timeline", "media_duration", "full_decode",
             * (["audio_presence_and_duration"] if manifest["profile"] == "production" else []),
+            * (["audio_snapshot_hashes"] if audio else []),
         ]},
         "human_review": None,
     }

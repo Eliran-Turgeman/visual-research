@@ -125,6 +125,82 @@ def test_rejects_stale_video_hash(manifest):
         inspect_production(manifest)
 
 
+def attach_audio_snapshot(manifest, tmp_path):
+    import wave
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    audio = audio_dir / "snapshot.wav"
+    with wave.open(str(audio), "wb") as target:
+        target.setparams((1, 2, 8000, 80, "NONE", "not compressed"))
+        target.writeframes(b"\x00\x00" * 80)
+    reference = {"path": str(audio.relative_to(tmp_path)), "sha256": sha256_file(audio)}
+    data = read_json(manifest)
+    timeline_path = Path(data["artifacts"]["timeline"]["path"])
+    timeline = read_json(timeline_path)
+    timeline["blocks"][0]["audio"] = [reference]
+    write_json(timeline_path, timeline)
+    data["artifacts"]["timeline"] = artifact_reference(timeline_path)
+    data["artifacts"]["audio"] = [reference]
+    write_json(manifest, data)
+    return audio
+
+
+def test_optional_audio_snapshot_lists_are_preserved_and_rechecked(manifest, tmp_path):
+    audio = attach_audio_snapshot(manifest, tmp_path)
+    record, evidence = prepared_review(manifest, tmp_path)
+    inspected = read_json(record)
+    assert inspected["artifacts"]["audio"] == [artifact_reference(audio)]
+    assert "audio_snapshot_hashes" in inspected["technical"]["checks"]
+    accepted = accept_production(manifest, record, evidence)
+    accepted_path = tmp_path / "accepted.json"
+    write_json(accepted_path, accepted)
+    assert verify_acceptance(manifest, accepted_path) == accepted
+    audio.write_bytes(b"changed snapshot")
+    with pytest.raises(ReviewError, match="SHA-256 mismatch"):
+        verify_acceptance(manifest, accepted_path)
+
+
+@pytest.mark.parametrize("invalid", [{}, [], None, "audio.wav"])
+def test_manifest_audio_extension_rejects_nonlists_and_empty_defaults(manifest, invalid):
+    data = read_json(manifest)
+    data["artifacts"]["audio"] = invalid
+    write_json(manifest, data)
+    with pytest.raises(ReviewError, match="audio"):
+        inspect_production(manifest)
+
+
+def test_timeline_audio_snapshot_cannot_disappear_from_manifest(manifest, tmp_path):
+    audio = attach_audio_snapshot(manifest, tmp_path)
+    other = audio.with_name("different.wav")
+    other.write_bytes(audio.read_bytes())
+    data = read_json(manifest)
+    data["artifacts"]["audio"] = [artifact_reference(other)]
+    write_json(manifest, data)
+    with pytest.raises(ReviewError, match="absent from the manifest"):
+        inspect_production(manifest)
+
+
+def test_stale_timeline_audio_digest_is_rejected_even_with_valid_manifest_snapshot(manifest, tmp_path):
+    attach_audio_snapshot(manifest, tmp_path)
+    data = read_json(manifest)
+    timeline_path = Path(data["artifacts"]["timeline"]["path"])
+    timeline = read_json(timeline_path)
+    timeline["blocks"][0]["audio"][0]["sha256"] = "0" * 64
+    write_json(timeline_path, timeline)
+    data["artifacts"]["timeline"] = artifact_reference(timeline_path)
+    write_json(manifest, data)
+    with pytest.raises(ReviewError, match="SHA-256 mismatch"):
+        inspect_production(manifest)
+
+
+def test_timeline_only_audio_refs_are_checked_without_requiring_new_manifest_extension(manifest, tmp_path):
+    audio = attach_audio_snapshot(manifest, tmp_path)
+    data = read_json(manifest)
+    del data["artifacts"]["audio"]
+    write_json(manifest, data)
+    assert inspect_production(manifest)["artifacts"]["audio"] == [artifact_reference(audio)]
+
+
 @pytest.mark.parametrize("run_id", ["other-run", None])
 def test_manifest_review_requires_run_bound_timeline(manifest, run_id):
     data = read_json(manifest)
