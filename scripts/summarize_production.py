@@ -121,7 +121,7 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Offline report over actual per-run manifests. Render elapsed seconds and "
+            "Offline report over actual per-run manifests. Render/validation elapsed seconds and "
             "optional manifest usage are measured fields; --accounting is separately "
             "SUPPLIED cost/usage/human-time evidence, not independently audited."
         ),

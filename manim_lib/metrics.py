@@ -6,8 +6,8 @@ Manifests are the actual per-attempt production records: ``schema_version``,
 ``run_id``, ``profile``, ``status``, ``scene_file``, ``scene_name``, ``settings``,
 and ``metrics`` are required. Optional ``manifest_id`` must also be unique.
 Other production fields/artifacts are preserved for the review validator.
-``metrics.render_seconds`` is render-subprocess elapsed time, not CPU seconds,
-end-to-end production latency, dollars, or human labor. Optional measured fields
+``metrics.render_seconds`` is managed-wrapper render/validation elapsed time,
+not CPU seconds, end-to-end production latency, dollars, or human labor. Optional measured fields
 are ``video_seconds``, ``narration_requests``, ``repeated_narration_requests``,
 ``narration_cache_hits``, ``repair_count``, and ``cost``. Repeated requests count
 requests for previously requested narration; cache hits count served requests,
@@ -383,7 +383,7 @@ def summarize_runs(
             "interpretation": "Descriptive samples only; no measured savings, causal effect, or routing recommendation.",
         },
         "notes": [
-            "render_seconds sums render subprocess elapsed durations; not CPU time or global wall-clock latency.",
+            "render_seconds sums managed-wrapper render/validation elapsed durations; not CPU time or global production wall-clock latency.",
             "Manifest measurements and supplied accounting have separate provenance; supplied values are not independently audited.",
             "Costs cover all attempted runs; human correction time is separate and has no assigned hourly price.",
             "Unknown values are null; partial nonnegative sums/cost ratios have lower_bound coverage.",
