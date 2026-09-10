@@ -149,7 +149,20 @@ media\runs\timeline-production-01\video.mp4
 ```
 
 The run also contains `media`, `audio`, and `work` directories. Do not mix a
-video from one run with another run's timeline. The manifest records source
+video from one run with another run's timeline. Reusable speech is separate
+from those run artifacts: by default the cache is
+`media\voiceovers\<provider>\`, shared across runs in this worktree.
+`--cache-dir CACHE_ROOT` overrides `MANIM_TTS_CACHE_ROOT`, which overrides the
+repository default; the effective cache always adds the provider subdirectory.
+An explicit common root can share valid speech across worktrees.
+
+Consumed audio is copied by hash into each run's `audio` directory before
+Manim reads it, so later cache changes do not mutate the retained run assets.
+The manifest records the effective cache location and actual audio references,
+not invented hit/request counts or savings. See
+[cache controls and recovery](skills/technical-manim-explainer/references/narration.md#cache-reuse-and-recovery).
+
+The manifest also records source
 revision/fingerprints, effective non-secret settings, environment versions,
 verified media metadata and hashes, and elapsed render/validation time—not
 human acceptance, inferred API cost, or a promise of bit-identical speech.

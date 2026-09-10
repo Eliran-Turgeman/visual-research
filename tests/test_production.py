@@ -385,7 +385,7 @@ def test_bash_wrapper_forwards_arguments_and_exit_codes(tmp_path):
     assert json.loads(result.read_text()) == arguments
 
 
-def test_ddtree_wrapper_uses_explicit_draft_and_preserves_silent_quality(tmp_path):
+def test_ddtree_wrapper_forwards_known_and_rejects_unknown_arguments(tmp_path):
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if not powershell:
         pytest.skip("PowerShell is not installed")
@@ -413,6 +413,14 @@ def test_ddtree_wrapper_uses_explicit_draft_and_preserves_silent_quality(tmp_pat
     assert arguments[arguments.index("--provider") + 1] == "none"
     assert "--require-tex" in arguments
     assert arguments[arguments.index("--cache-dir") + 1] == "shared cache"
+    result.unlink()
+    for flag in ("-Help", "-Unknown"):
+        completed = subprocess.run(
+            [powershell, "-NoProfile", "-File", str(example_dir / "render.ps1"), flag],
+            env=env, capture_output=True, text=True,
+        )
+        assert completed.returncode != 0
+        assert not result.exists(), "Unknown arguments must fail before starting Python."
 
 
 def test_real_silent_draft_smoke_is_run_bound_without_credentials(tmp_path, monkeypatch):
