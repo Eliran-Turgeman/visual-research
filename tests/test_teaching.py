@@ -67,6 +67,8 @@ def test_public_contracts_validate_without_certifying_comprehension(episode):
     assert report["evidence"]["human_comprehension"] == "not_assessed"
     assert report["evidence"]["production_acceptance"] == "not_assessed"
     assert report["evidence"]["claim_entailment"] == "human_review_required"
+    omitted = {check["check"] for check in report["omitted_checks"]}
+    assert {"timeline_comparison", "source_content", "visual_event_comparison"} <= omitted
     json.dumps(report, allow_nan=False)
 
 
@@ -106,6 +108,8 @@ def test_pinned_canonical_local_sources_match(episode):
     assert report["valid"], report["errors"]
     assert report["evidence"]["source_content"] == "supplied"
     assert "source_unavailable" in codes(report, "warnings")
+    omitted_sources = {check.get("source") for check in report["omitted_checks"] if check["check"] == "source_content"}
+    assert not omitted_sources.intersection(texts)
 
 
 def test_39_prefix_oracle_agrees_with_independent_full_outcome_expectation():
@@ -255,6 +259,7 @@ def test_legacy_timeline_accepted_without_optional_fields():
     report = teaching.validate_contract(document, timeline=timeline_for(document))
     assert report["valid"], report["errors"]
     assert report["evidence"]["audiovisual_fidelity"] == "not_assessed"
+    assert not any(check["check"] == "timeline_comparison" for check in report["omitted_checks"])
 
 
 def test_source_digest_is_drift_detection_not_claim_entailment():

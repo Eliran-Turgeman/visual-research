@@ -9,6 +9,8 @@ API:
 ``validate_contract`` is pure: source_texts is an optional source-ID -> text
 mapping supplied by the caller. It never opens a source or executes its code.
 Results contain JSON-serializable errors, review warnings and computed checks.
+``omitted_checks`` explicitly lists missing source/timeline/event evidence and
+partial narration coverage; missing evidence is never a passed check.
 ``valid`` means the supplied deterministic checks passed, NOT that research
 claims are true, a movie is faithful, or a viewer understood it.
 
@@ -277,7 +279,7 @@ def _text(value):
 
 def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dict:
     """Validate shape, references and supplied evidence; never certify learning."""
-    errors, warnings, checks = [], [], []
+    errors, warnings, checks, omitted_checks = [], [], [], []
 
     def issue(code, path, message, *, warning=False):
         (warnings if warning else errors).append({"code": code, "path": path, "message": message})
@@ -318,6 +320,7 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
         return {
             "schema_version": SCHEMA_VERSION, "valid": not errors,
             "errors": errors, "warnings": warnings, "checks": checks,
+            "omitted_checks": omitted_checks,
             "evidence": {
                 "source_content": "supplied" if source_texts is not None else "not_checked",
                 "timeline": "supplied" if timeline is not None else "not_checked",
@@ -350,6 +353,8 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
     examples = records("worked_examples")
     beats = records("beats", empty=True)
     questions = records("transfer_questions")
+    if timeline is None:
+        omitted_checks.append({"check": "timeline_comparison", "reason": "No timeline supplied"})
     if not 1 <= len(questions) <= 2:
         issue("question_count", "transfer_questions", "Provide one or two transfer questions")
     for sid, source in sources.items():
@@ -371,6 +376,10 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
             or any(c not in "0123456789abcdef" for c in digest)
         ):
             issue("shape", f"{path}.sha256", "Expected lowercase SHA-256")
+        if not isinstance(source_texts, Mapping) or sid not in source_texts:
+            omitted_checks.append({"check": "source_content", "source": sid, "reason": "No source text supplied"})
+        elif not digest:
+            omitted_checks.append({"check": "source_content", "source": sid, "reason": "No pinned content digest"})
         if source_texts is not None:
             if not isinstance(source_texts, Mapping) or sid not in source_texts:
                 issue("source_unavailable", path, "No text supplied for this source", warning=True)
@@ -439,6 +448,9 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
     if mapping != "complete":
         require_text(contract, "mapping_note", "$")
         issue("incomplete_mapping", "timeline_mapping", str(contract.get("mapping_note", "")), warning=True)
+        omitted_checks.append({"check": "complete_narration_coverage", "reason": str(contract.get("mapping_note", ""))})
+    if not any(isinstance(beat.get("events"), list) and beat["events"] for beat in beats.values()):
+        omitted_checks.append({"check": "visual_event_comparison", "reason": "No expected visual events are mapped"})
     indices = []
     for bid, beat in beats.items():
         path = f"beats.{bid}"
@@ -494,6 +506,8 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
         refs(question, "example_ids", examples, path)
     if timeline is not None and not errors:
         _validate_timeline(timeline, beats, mapping, issue)
+    elif timeline is not None:
+        omitted_checks.append({"check": "timeline_comparison", "reason": "Skipped because contract validation has hard errors"})
     return result()
 
 
