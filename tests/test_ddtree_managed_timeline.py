@@ -17,6 +17,7 @@ def timeline_probe(monkeypatch, tmp_path):
     monkeypatch.setenv("MANIM_TTS_PROVIDER", "none")
     monkeypatch.delenv("MANIM_RUN_ID", raising=False)
     monkeypatch.delenv("MANIM_TIMELINE_PATH", raising=False)
+    monkeypatch.delenv("MANIM_VOICEOVER_DIR", raising=False)
 
     class Probe(module.DDTreeDFlashExplainer):
         def opening(self):

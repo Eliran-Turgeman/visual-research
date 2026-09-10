@@ -106,6 +106,11 @@ class DDTreeDFlashExplainer(VoiceoverScene):
         )
         default_provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "none"
         provider = os.getenv("MANIM_TTS_PROVIDER", default_provider).lower()
+        voiceover_dir = os.getenv("MANIM_VOICEOVER_DIR")
+        # Managed runs supply a persistent, already provider-scoped directory.
+        cache_options = (
+            {"cache_dir": Path(voiceover_dir).resolve()} if voiceover_dir else {}
+        )
         if provider == "openrouter":
             from manim_lib.openrouter_voiceover import (
                 DEFAULT_OPENROUTER_TTS_MODEL,
@@ -127,29 +132,36 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                     style_degree=(
                         float(style_degree) if style_degree is not None else None
                     ),
+                    **cache_options,
                 )
             )
             self._voiceover_enabled = True
         elif provider == "gtts":
             from manim_voiceover.services.gtts import GTTSService
 
-            self.set_speech_service(GTTSService(lang="en", tld="com"))
+            self.set_speech_service(
+                GTTSService(lang="en", tld="com", **cache_options)
+            )
             self._voiceover_enabled = True
         elif provider == "openai":
             from manim_voiceover.services.openai import OpenAIService
 
             self.set_speech_service(
-                OpenAIService(voice=os.getenv("OPENAI_TTS_VOICE", "alloy"))
+                OpenAIService(
+                    voice=os.getenv("OPENAI_TTS_VOICE", "alloy"), **cache_options,
+                )
             )
             self._voiceover_enabled = True
         elif provider == "azure":
             from manim_voiceover.services.azure import AzureService
 
-            self.set_speech_service(AzureService())
+            self.set_speech_service(AzureService(**cache_options))
             self._voiceover_enabled = True
         elif provider == "external-gtts":
             self._external_voiceover = True
-            self._external_dir = Path("media/voiceovers/ddtree_external").resolve()
+            self._external_dir = Path(
+                voiceover_dir or "media/voiceovers/ddtree_external"
+            ).resolve()
             self._external_dir.mkdir(parents=True, exist_ok=True)
         elif provider != "none":
             raise ValueError(
