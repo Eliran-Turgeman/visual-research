@@ -166,10 +166,9 @@ def test_combined_episode_maps_all_actual_narration_including_loop_selections():
     order = [node.value.func.attr for node in methods["construct"].body
              if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
              and isinstance(node.value.func, ast.Attribute)]
+    assert order[-1] == "_finalize"
     texts = []
-    for name in order:
-        if name == "_finalize":
-            continue
+    for name in order[:-1]:
         method = methods[name]
         calls = sorted(
             (n for n in ast.walk(method) if isinstance(n, ast.Call)
