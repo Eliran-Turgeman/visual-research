@@ -1,0 +1,36 @@
+{
+  "schema_version":1,
+  "episode":"ddtree_dflash",
+  "audience":"Engineers seeking the relationship between DFlash parallel draft distributions and DDTree target verification.",
+  "prerequisites":["Autoregressive next-token prediction.","Products and sums of small probabilities."],
+  "objective":"Relate parallel marginal proposals to a budgeted prefix tree and distinguish draft coverage from target-selected committed output.",
+  "scope":"The combined example's algorithmic argument, with partial narration mapping; no automatic approval of legacy numerical graphics or end-to-end rendering.",
+  "assumptions":["Q1, Q2 and Q3 are toy distributions under fixed shared conditioning.","The root b is an already-emitted anchor and is outside the seven-node proposal budget.","The expected-depth prefix sum is under Q, not a guarantee under the target distribution.","Insertion order is not BFS. Position depth, ancestor visibility and target membership have distinct roles.","Runtime improvement depends on draft, tree-build and verification costs per committed token; accepting two proposals is not measured speedup."],
+  "unknowns":["Most narration is scene-local and includes loop-generated blocks; only the independently located opening block at rendered index one is mapped here. No event IDs are available.","Older scene products and target-output graphics require review against canonical DDTreeFull; this contract encodes independent expected semantics, not known legacy defects.","No audiovisual review or learner-response evidence is supplied."],
+  "sources":[
+    {"id":"scene","kind":"implementation","ref":"examples\\ddtree_dflash\\scene.py","revision":"aebec5f3b4a03a6db3051a885db9e1abe99a8505","inspection":"inspected","sha256":"60e5a8fe39e086344318534832fd06a7d785d549469e3b0d6dbca13d611eaced"},
+    {"id":"toy","kind":"toy","ref":"examples\\ddtree_dflash\\algorithm.py","revision":"aebec5f3b4a03a6db3051a885db9e1abe99a8505","inspection":"inspected","sha256":"f8747e8a3edb26d4a310c0eb90f38eb4ebfee052a2e5589ddb18da0a544fa7bd"},
+    {"id":"paper","kind":"paper","ref":"https://arxiv.org/html/2604.12989v1","revision":"v1","inspection":"inspected"},
+    {"id":"official","kind":"implementation","ref":"https://github.com/liranringel/ddtree/blob/c96427a185677bf4133ed865dd1626a5041aef9b/ddtree.py","revision":"c96427a185677bf4133ed865dd1626a5041aef9b","inspection":"inspected"}
+  ],
+  "claims":[
+    {"id":"draft-coverage","kind":"mechanism","status":"mapped","statement":"A finite budget buys alternative prefixes scored under factorized Q rather than only one modal path.","evidence":[{"source":"paper","locator":"Section 4.2, equations (6)-(8), Propositions 1 and 2","support":"The surrogate maximizes expected matched depth under Q using prefix masses; root does not count toward B."}]},
+    {"id":"target-output","kind":"mechanism","status":"mapped","statement":"A target miss terminates cached reuse but is appended as valid output and the next anchor.","evidence":[{"source":"official","locator":"follow_verified_tree; ddtree_generate accepted_tokens and next_token output assignments","support":"The first nonmember next_token is returned separately and written after matched tokens; only matched indices retain current target KV entries."}]},
+    {"id":"toy-products","kind":"toy","status":"mapped","statement":"The worked seventh prefix a-model-works has exact mass 0.1092; rounded 0.109 is approximate.","evidence":[{"source":"toy","locator":"Q1['a'], Q2['model'], Q3['works']","support":"The input values 0.35, 0.60 and 0.52 yield the independently checked exact product."}]}
+  ],
+  "worked_examples":[
+    {"id":"prefix-product","provenance":"toy","description":"Preserve exact arithmetic despite rounded visual labels.","source_refs":["toy"],"checks":[{"kind":"rounded_product","input":{"factors":["0.35","0.60","0.52"],"displayed":"0.109","relation":"approximately","decimal_places":3},"expected":{"exact_product":"0.109200"}}]},
+    {"id":"greedy-round","provenance":"toy","description":"Reconstruct tree membership from token-array paths and supplied target choices; root b is excluded from new output.","source_refs":["scene","official"],"checks":[{"kind":"greedy_tree_walk","input":{"paths":[[],["the"],["a"],["the","model"],["a","model"],["the","model","works"],["the","system"],["a","model","works"]],"decisions":[{"prefix":[],"token":"a"},{"prefix":["a"],"token":"model"},{"prefix":["a","model"],"token":"runs"}]},"expected":{"matched":["a","model"],"emitted":["a","model","runs"],"next_anchor":"runs"}}]}
+  ],
+  "timeline_mapping":"partial",
+  "mapping_note":"Only opening()'s second narration block has an explicit rendered index/text mapping. Later stable contract beat IDs are conceptual source-stage mappings, not invented runtime event IDs.",
+  "beats":[
+    {"id":"parallel-draft-to-tree","purpose":"Connect cheap block drafting to multiple likely continuations.","claim_ids":["draft-coverage"],"example_ids":["prefix-product"],"narration":{"index":1,"source":"scene","locator":"DDTreeDFlashExplainer.opening, second self.narrate call","text":"DFlash makes drafting cheap by predicting a whole block in parallel. DDTree then spends the verifier budget on several likely continuations, instead of betting everything on one path."}},
+    {"id":"exact-prefix-mass","purpose":"The tree-construction stage must distinguish exact products from rounded labels.","claim_ids":["draft-coverage","toy-products"],"example_ids":["prefix-product"]},
+    {"id":"target-miss-emission","purpose":"tree_verification follows a and model, then emits the missing runs as the new anchor.","claim_ids":["target-output"],"example_ids":["greedy-round"]}
+  ],
+  "transfer_questions":[
+    {"id":"more-budget-more-speed","question":"If increasing B improves the sum of draft prefix masses, has it proved lower wall-clock time per output token?","expected_answer":"No. The sum is a Q-based coverage surrogate. Drafting, tree construction, verification cost and actual target-selected output must also be considered.","justification":"A larger nonnegative prefix sum cannot establish a runtime inequality. The denominator is actual committed tokens, whereas the numerator includes work that generally increases with tree size. The paper distinguishes the surrogate from the target objective.","claim_ids":["draft-coverage"],"example_ids":["prefix-product","greedy-round"]},
+    {"id":"missing-but-valid","question":"Why is runs emitted even though it is not a child of a-model?","expected_answer":"Because the target selected it at that prefix. Only cached continuation stops; the token remains valid output and anchors the next round.","justification":"Direct membership testing reaches [a,model], finds no [a,model,runs], and returns runs separately. The official output assignment appends that returned token.","claim_ids":["target-output"],"example_ids":["greedy-round"]}
+  ]
+}
