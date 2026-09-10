@@ -24,6 +24,55 @@ def test_token_components_preserve_state_and_order():
     assert TokenBox("x").state is TokenState.NEUTRAL
 
 
+@pytest.mark.parametrize("tokens", [("a",), ("a", "longer-token")])
+@pytest.mark.parametrize("scale", [0.4, 1.8])
+def test_appended_tokens_inherit_sequence_scale_and_spacing(tokens, scale):
+    sequence = TokenSequence(*tokens, buff=0.3).scale(scale).shift(RIGHT * 2)
+    prefix = list(sequence.token_boxes)
+    points = [box.get_all_points().copy() for box in prefix]
+    for token, state in [
+        ("c", TokenState.ACCEPTED),
+        ("long-new-token", TokenState.ACTIVE),
+    ]:
+        previous = sequence.token_boxes[-1]
+        appended = sequence.append_token(token, state=state)
+        assert appended.token == token
+        assert appended.state is state
+        assert appended.box.width == pytest.approx(previous.box.width)
+        assert appended.box.height == pytest.approx(previous.box.height)
+        assert appended.label.font_size == pytest.approx(
+            TokenBox(token).label.font_size * scale
+        )
+        assert contains(appended.box, appended.label)
+        assert appended.get_left()[0] - previous.get_right()[0] == pytest.approx(
+            0.3 * scale
+        )
+        assert appended.get_center()[1] == pytest.approx(previous.get_center()[1])
+    for box, original_points in zip(prefix, points):
+        assert box.get_all_points() == pytest.approx(original_points)
+        assert box.state is TokenState.NEUTRAL
+
+
+def test_append_after_animated_sequence_scaling_uses_final_geometry():
+    sequence = TokenSequence("a", "b", buff=0.2)
+    animation = sequence.animate.scale(0.5).shift(RIGHT).build()
+    animation.begin()
+    animation.interpolate(1)
+    animation.finish()
+    previous = sequence.token_boxes[-1]
+    appended = sequence.append_token("c")
+    assert appended.box.width == pytest.approx(previous.box.width)
+    assert appended.get_left()[0] - previous.get_right()[0] == pytest.approx(0.1)
+
+
+def test_append_to_empty_sequence_uses_default_token_dimensions():
+    sequence = TokenSequence()
+    appended = sequence.append_token("first", state=TokenState.SPECULATIVE)
+    assert sequence.token_boxes == [appended]
+    assert appended.box.width == pytest.approx(TokenBox("first").box.width)
+    assert appended.state is TokenState.SPECULATIVE
+
+
 def test_token_box_long_label_stays_inside_and_has_layered_material():
     token = TokenBox("extraordinarily-long-token", width=1.15)
     assert contains(token.box, token.label)

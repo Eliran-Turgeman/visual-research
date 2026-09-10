@@ -11,6 +11,7 @@ keeping composition in the caller's hands.
 
 from __future__ import annotations
 
+from numbers import Integral
 from typing import Sequence
 
 import numpy as np
@@ -135,17 +136,23 @@ def map_tree_to_sequence(
 # ---------------------------------------------------------------------------
 
 
-def _compute_ancestors(parent_map: dict[str, str | None]) -> dict[str, set[str]]:
-    """Return ``{node: set_of_ancestor_keys}`` from a parent map."""
+def _compute_ancestors(
+    parent_map: dict[str, str | None], *, allow_partial: bool = False
+) -> dict[str, set[str]]:
+    """Compute ancestry, rejecting cycles and implicit missing-parent roots."""
     ancestors: dict[str, set[str]] = {}
     for key in parent_map:
         anc: set[str] = set()
         current = parent_map.get(key)
         while current is not None:
-            if current in anc:
-                break  # cycle guard
+            if current == key or current in anc:
+                raise ValueError(f"Ancestry cycle encountered at {current!r}")
             anc.add(current)
-            current = parent_map.get(current)
+            if current not in parent_map:
+                if not allow_partial:
+                    raise ValueError(f"Missing parent definition: {current!r}")
+                break
+            current = parent_map[current]
         ancestors[key] = anc
     return ancestors
 
@@ -156,6 +163,7 @@ def map_ancestry_to_mask(
     node_to_index: dict[str, int],
     *,
     include_self: bool = True,
+    allow_partial: bool = False,
     color: str = ACCENT.base,
     opacity: float = 0.35,
 ) -> tuple[list[Animation], VGroup]:
@@ -165,20 +173,42 @@ def map_ancestry_to_mask(
     node_to_index[a])`` is highlighted.  If *include_self* is ``True``
     (default), each node's own diagonal cell is also highlighted.
 
+    Cycles are always rejected. By default every parent must be defined, with
+    roots explicitly mapped to ``None``. Set ``allow_partial=True`` to treat
+    undefined parents as terminal ancestors (usable as columns, but with no
+    inferred row or diagonal). ``node_to_index`` may select a subset of nodes;
+    ancestry still traverses unindexed intermediate nodes. Indices must be
+    distinct nonnegative integers; highlighted cells must fit the matrix.
+
     Returns ``(animations, highlight_overlays)``.
     """
-    ancestors = _compute_ancestors(parent_map)
+    ancestors = _compute_ancestors(parent_map, allow_partial=allow_partial)
+    indices: set[int] = set()
+    for key, index in node_to_index.items():
+        if not isinstance(index, Integral) or isinstance(index, bool):
+            raise ValueError("Mask indices must be integers")
+        if index < 0:
+            raise IndexError(f"Mask index {index} must be nonnegative")
+        if index in indices:
+            raise ValueError(f"Duplicate mask index: {index}")
+        indices.add(index)
+        if key not in parent_map and not allow_partial:
+            raise ValueError(f"Missing node definition: {key!r}")
     coords: list[tuple[int, int]] = []
 
     for node_key, anc_set in ancestors.items():
         if node_key not in node_to_index:
             continue
         row = node_to_index[node_key]
-        for anc_key in anc_set:
+        for anc_key in sorted(anc_set):
             if anc_key in node_to_index:
                 coords.append((row, node_to_index[anc_key]))
         if include_self:
             coords.append((row, row))
+
+    for row, column in coords:
+        if row >= len(matrix.cells) or column >= len(matrix.cells[0]):
+            raise IndexError(f"Mask cell {(row, column)} out of range")
 
     # Deduplicate preserving order
     seen: set[tuple[int, int]] = set()
