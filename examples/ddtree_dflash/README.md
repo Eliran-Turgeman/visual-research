@@ -21,33 +21,54 @@ The algorithm and terminology follow:
 Render the narrated version from the repository root:
 
 ```powershell
-$env:OPENROUTER_API_KEY = "<your key>"
-$env:MANIM_TTS_PROVIDER = "openrouter"
-$env:MANIM_QUALITY = "-qh"
-.\scripts\render.ps1 examples\ddtree_dflash\scene.py DDTreeDFlashExplainer
+.\scripts\render.ps1 examples\ddtree_dflash\scene.py DDTreeDFlashExplainer `
+  --profile production --provider openrouter --quality=-qh `
+  --output-dir media\runs --run-id ddtree-dflash-production-01
 ```
 
-OpenRouter uses `microsoft/mai-voice-2` with the Harper voice by default. For a
-fast silent draft, use `MANIM_TTS_PROVIDER=none` and `MANIM_QUALITY=-ql`.
+Configure the OpenRouter key in the process first. The selected service uses
+`microsoft/mai-voice-2` with the Harper voice by default. For a fast silent
+managed draft, use `--profile draft --provider none --quality=-ql` and a fresh
+run ID. The run's `video.mp4`, `timeline.json`, and `manifest.json` are preserved
+under `media\runs\<run-id>\`. Follow the
+[managed review workflow](../../skills/technical-manim-explainer/references/production-review.md)
+before calling a narrated result accepted.
 
-On memory-constrained systems, render narration without Manim's in-memory
-audio mixer, then mux the timed tracks:
+Managed `--provider external-gtts` already embeds its narration; it needs **no
+separate mux step**. For the legacy direct-Manim external-audio escape hatch,
+render without Manim's in-memory audio mixer, then pair the timed tracks
+explicitly:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "external-gtts"
 .\.venv\Scripts\python.exe -m manim --disable_caching -ql examples\ddtree_dflash\scene.py DDTreeDFlashExplainer
-.\.venv\Scripts\python.exe examples\ddtree_dflash\mux_audio.py media\videos\scene\480p15\DDTreeDFlashExplainer.mp4 media\videos\scene\480p15\DDTreeDFlashExplainer-narrated.mp4
+.\.venv\Scripts\python.exe examples\ddtree_dflash\mux_audio.py `
+  media\videos\scene\480p15\DDTreeDFlashExplainer.mp4 `
+  media\videos\scene\480p15\DDTreeDFlashExplainer-narrated.mp4 `
+  --manifest media\voiceovers\ddtree_external\manifest.json `
+  --timeline media\review\ddtree_dflash\timeline.json
 ```
+
+This is an explicit legacy external-gTTS path, not managed production
+acceptance. gTTS synthesis requires network access; the mux command itself
+generates no speech. The output must not already exist, and the input must be
+silent. Preserve the matching legacy manifest and timeline from this render;
+the muxer rejects missing, mismatched, overlapping, or stale tracks and writes
+an adjacent `.mp4.mux.json` receipt after validating the complete output.
+Legacy pairing checks are not cryptographic provenance. Prefer a versioned
+hash-bound manifest when supplying externally assembled audio, and review the
+entire resulting audiovisual artifact before acceptance.
 
 ## Reviewing narration timing
 
-Every render (any `MANIM_TTS_PROVIDER`, including `none`) writes a
-provider-independent narration timeline to
+Every managed render preserves its run-specific provider-independent
+timeline. Direct Manim (any `MANIM_TTS_PROVIDER`, including `none`) instead writes
+its legacy narration timeline to
 `media/review/ddtree_dflash/timeline.json` after a successful `construct()`,
 recording each block's actual rendered start/end timestamps and narration
 text. Use the general-purpose extraction script to pull start/middle/end
 review frames and contact sheets for every block, for example right after a
-fast silent draft:
+fast direct-Manim silent draft into a new empty frames directory:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "none"

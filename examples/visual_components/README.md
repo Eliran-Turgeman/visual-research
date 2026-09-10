@@ -5,6 +5,9 @@ objects. It deliberately places token states, a probability distribution, a
 stable tree, and a labeled matrix in one composition so changes to the design
 system can be judged together.
 
+This intentionally silent still uses the direct-Manim escape hatch, not the
+narrated production profile:
+
 ```powershell
 .\.venv\Scripts\python.exe -m manim render -ql -s `
   examples\visual_components\scene.py VisualComponents
@@ -12,3 +15,8 @@ system can be judged together.
 
 Review the result for hierarchy, contrast, label fit, repeated spacing, and
 whether semantic color remains the strongest signal.
+
+A still is a component regression reference, not evidence of correct motion,
+audio, or learner understanding. Use the
+[production review procedure](../../skills/technical-manim-explainer/references/production-review.md)
+for complete episodes.
