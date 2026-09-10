@@ -59,7 +59,15 @@ durations rather than word-count estimates.
 
 ## Reproducible speech assets
 
-Pre-cache the entire narration independently of the renderer:
+Managed renders reuse valid speech from `media\voiceovers\openrouter` by
+default, independent of their fresh run ID. Use `-CacheDir CACHE_ROOT` to choose
+another root; the wrapper appends the provider name. Retained audio snapshots
+live in each run's `audio` directory and do not change when the shared cache
+changes. See the [cache settings](../../skills/technical-manim-explainer/references/narration.md#cache-reuse-and-recovery)
+for environment precedence and cross-worktree reuse.
+
+The standalone legacy helper can pre-cache narration independently of the
+renderer:
 
 ```powershell
 .\.venv\Scripts\python.exe -m examples.ddtree_full.narration
@@ -70,7 +78,10 @@ OpenRouter key; authorize provider use before running it. Audio and its
 provider metadata are retained under `media\voiceovers\`; the episode manifest
 at `media\review\ddtree_full\narration.json` identifies each text, audio file,
 duration, model, and voice. No credentials are written to these files.
-Unchanged valid clips can be reused with their matching provider configuration.
+This helper's legacy cache path is not the managed provider-scoped cache;
+do not assume invoking it prepopulates `media\voiceovers\openrouter`.
+Unchanged valid clips can be reused only with their matching cache location
+and provider configuration.
 Managed runs retain their own audio artifacts; inspect the run's paths rather
 than assuming a mutable global narration manifest is its review evidence.
 See [audition and recovery guidance](../../skills/technical-manim-explainer/references/narration.md).

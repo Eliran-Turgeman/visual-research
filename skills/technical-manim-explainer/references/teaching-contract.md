@@ -64,13 +64,20 @@ Missing source, timeline, or visual-event evidence is recorded in
 normalize CRLF to LF over UTF-8; the bound output artifact's contract/timeline
 hashes instead identify the exact raw parsed bytes.
 Unresolved source support also produces warnings and `claim_support` omissions.
-For example, a generic parallel-drafter assumption or unquantified speedup claim
-must not become verified evidence merely because all narration beats map.
+Complete beat mapping must never turn an unsupported claim into verified
+evidence. Use the current source-aligned contracts, not resolved warnings from
+older runs. Any remaining absent source, media, event, or learner evidence
+still needs to be reported explicitly.
 
 The result separates errors, warnings, deterministic checks, and evidence
 limits. A source hash proves identity/drift, not that a source entails a claim.
 Claim entailment requires human review; audiovisual fidelity, human
 comprehension, and production acceptance are not established by this command.
+When its bound output is attached to production review, `accept` and `verify`
+independently recompute validation on the actual contract/timeline rather than
+trusting the envelope's success flag. Source/event omissions remain explicit
+in `teaching.recomputed_validation`; recomputation does not remove those
+evidence limits.
 The version-1 schema and `load_contract` / `validate_contract` interfaces are
 documented in `manim_lib\teaching.py`.
 
