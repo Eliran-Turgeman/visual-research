@@ -2,6 +2,7 @@
 
 API:
     load_contract(path) -> dict
+    loads_contract(text) -> dict
     validate_contract(contract, *, timeline=None, source_texts=None) -> dict
     evaluate_check(check) -> dict
 
@@ -62,6 +63,11 @@ def load_contract(path: str | Path) -> dict:
     File-system errors remain OSError; malformed documents raise ValueError.
     This loader also accepts timeline documents for use with the pure validator.
     """
+    return loads_contract(Path(path).read_text(encoding="utf-8-sig"))
+
+
+def loads_contract(text: str) -> dict:
+    """Parse a strict JSON object without I/O; useful for hashing loaded bytes."""
     def pairs(items):
         result = {}
         for key, value in items:
@@ -80,7 +86,7 @@ def load_contract(path: str | Path) -> dict:
         return result
 
     result = json.loads(
-        Path(path).read_text(encoding="utf-8-sig"),
+        text,
         object_pairs_hook=pairs, parse_constant=constant, parse_float=floating,
     )
     if not isinstance(result, dict):
@@ -499,6 +505,8 @@ def _validate_timeline(timeline, beats, mapping, issue):
         type(timeline["schema_version"]) is not int or timeline["schema_version"] != 1
     ):
         issue("timeline_shape", "timeline.schema_version", "Unsupported timeline version")
+    if "run_id" in timeline and not _text(timeline["run_id"]):
+        issue("timeline_shape", "timeline.run_id", "When supplied, run_id must be a nonempty string")
     duration = timeline.get("scene_duration")
     if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0:
         issue("timeline_shape", "timeline.scene_duration", "Expected finite nonnegative scene duration")

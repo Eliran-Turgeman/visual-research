@@ -7,6 +7,7 @@ Scratch files remain under this worktree and are removed after each test.
 import ast
 import copy
 from fractions import Fraction
+import hashlib
 import importlib.util
 import itertools
 import json
@@ -360,3 +361,83 @@ def test_validator_does_not_mutate_inputs():
     before = copy.deepcopy((document, timeline))
     teaching.validate_contract(document, timeline=timeline)
     assert (document, timeline) == before
+
+
+@pytest.fixture
+def artifact_paths(scratch):
+    paths = [scratch.with_name(f"{scratch.stem}-{suffix}.json") for suffix in ("timeline", "report")]
+    yield paths
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("run_id", [None, "offline-bound-fixture"])
+def test_cli_bound_artifact_hashes_exact_bytes_and_keeps_human_evidence_separate(scratch, artifact_paths, run_id):
+    timeline_path, output_path = artifact_paths
+    document = contract("speculative_decoding_timeline")
+    timeline = timeline_for(document)
+    if run_id:
+        timeline["run_id"] = run_id
+    contract_bytes = ("\ufeff" + json.dumps(document, indent=2).replace("\n", "\r\n")).encode("utf-8")
+    timeline_bytes = json.dumps(timeline, indent=2).replace("\n", "\r\n").encode("utf-8")
+    scratch.write_bytes(contract_bytes)
+    timeline_path.write_bytes(timeline_bytes)
+    result = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "scripts" / "validate_teaching.py"),
+         str(scratch), "--timeline", str(timeline_path), "--output", str(output_path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout
+    artifact = teaching.load_contract(output_path)
+    assert artifact["status"] == "passed"
+    assert artifact["validation"] == json.loads(result.stdout)
+    assert artifact["contract"] == {"path": str(scratch.resolve()), "sha256": hashlib.sha256(contract_bytes).hexdigest()}
+    assert artifact["timeline"] == {"path": str(timeline_path.resolve()), "sha256": hashlib.sha256(timeline_bytes).hexdigest()}
+    assert artifact.get("run_id") == run_id
+    assert artifact["validation"]["evidence"]["human_comprehension"] == "not_assessed"
+    assert artifact["validation"]["evidence"]["audiovisual_fidelity"] == "not_assessed"
+    assert artifact["validation"]["evidence"]["production_acceptance"] == "not_assessed"
+
+
+def test_bound_artifact_requires_timeline_and_never_overwrites_inputs(scratch, artifact_paths):
+    timeline_path, output_path = artifact_paths
+    document = contract()
+    scratch.write_text(json.dumps(document), encoding="utf-8")
+    command = [sys.executable, "-B", str(ROOT / "scripts" / "validate_teaching.py"), str(scratch), "--json"]
+    missing = subprocess.run([*command, "--output", str(output_path)], cwd=ROOT, capture_output=True, text=True, check=False)
+    assert missing.returncode == 2
+    assert "requires --timeline" in json.loads(missing.stdout)["errors"][0]["message"]
+    assert not output_path.exists()
+    timeline_path.write_text(json.dumps(timeline_for(document)), encoding="utf-8")
+    before = scratch.read_bytes()
+    collision = subprocess.run([*command, "--timeline", str(timeline_path), "--output", str(scratch)],
+                               cwd=ROOT, capture_output=True, text=True, check=False)
+    assert collision.returncode == 2
+    assert scratch.read_bytes() == before
+
+
+def test_semantic_failure_writes_failed_not_passed_artifact(scratch, artifact_paths):
+    timeline_path, output_path = artifact_paths
+    document = contract()
+    timeline = timeline_for(document)
+    timeline["blocks"][0]["text"] = "Wrong narration from a different run."
+    scratch.write_text(json.dumps(document), encoding="utf-8")
+    timeline_path.write_text(json.dumps(timeline), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "scripts" / "validate_teaching.py"),
+         str(scratch), "--timeline", str(timeline_path), "--output", str(output_path), "--json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    artifact = teaching.load_contract(output_path)
+    assert artifact["status"] == "failed"
+    assert not artifact["validation"]["valid"]
+    assert "narration_drift" in codes(artifact["validation"])
+
+
+@pytest.mark.parametrize("run_id", [None, "", 1, []])
+def test_present_but_invalid_run_id_is_not_legacy(run_id):
+    document = contract()
+    timeline = timeline_for(document)
+    timeline["run_id"] = run_id
+    assert "timeline_shape" in codes(teaching.validate_contract(document, timeline=timeline))
