@@ -1,6 +1,7 @@
 """Artifact-bound technical checks and explicit, attributed human acceptance.
 
-This module deliberately does not import the rendering or teaching modules.
+This module does not import the rendering module. Explicit teaching bindings
+lazily invoke the pure teaching validator against the actual bound inputs.
 ``inspect_production`` only verifies technical evidence; it cannot judge speech,
 visual quality, correctness of a lesson, or viewer comprehension.
 
@@ -323,6 +324,8 @@ def validate_human_evidence(evidence: dict, record: dict, record_sha256: str) ->
 def _validate_teaching_binding(
     contract_path: Path, validation_path: Path, record: dict, evidence: dict,
 ) -> dict:
+    from manim_lib.teaching import loads_contract, validate_contract
+
     validation_reference = artifact_reference(validation_path)
     envelope = read_json(validation_path)
     if type(envelope.get("schema_version")) is not int or envelope["schema_version"] != 1:
@@ -341,14 +344,46 @@ def _validate_teaching_binding(
         raise ReviewError("Teaching validation timeline differs from the reviewed manifest timeline.")
     if envelope.get("run_id") != record["run_id"]:
         raise ReviewError("Teaching validation requires the reviewed run_id (legacy unbound reports cannot be accepted).")
+    timeline_reference = record["artifacts"]["timeline"]
+    timeline_path = verify_reference(timeline_reference, validation_path.parent, "manifest timeline")
     contract_reference = artifact_reference(contract_path)
     if evidence.get("teaching_contract_sha256") != contract_reference["sha256"]:
         raise ReviewError("Human evidence must bind teaching_contract_sha256 explicitly.")
+
+    def bound_document(path: Path, digest: str) -> dict:
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise ReviewError(f"Cannot read bound teaching input {path}: {exc}") from exc
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise ReviewError(f"Bound teaching input changed: {path}.")
+        try:
+            return loads_contract(raw.decode("utf-8-sig"))
+        except ValueError as exc:
+            raise ReviewError(f"Invalid bound teaching input {path}: {exc}") from exc
+
+    recomputed = validate_contract(
+        bound_document(contract_path, contract_reference["sha256"]),
+        timeline=bound_document(timeline_path, timeline_reference["sha256"]),
+    )
+    if not recomputed["valid"]:
+        details = "; ".join(
+            f"{error['code']} at {error['path']}: {error['message']}"
+            for error in recomputed["errors"]
+        )
+        raise ReviewError(f"Recomputed teaching validation failed: {details}")
     if artifact_reference(validation_path) != validation_reference:
         raise ReviewError("Teaching validation changed during acceptance.")
-    if envelope["contract"]["sha256"] != contract_reference["sha256"]:
+    if (
+        envelope["contract"]["sha256"] != contract_reference["sha256"]
+        or artifact_reference(contract_path) != contract_reference
+    ):
         raise ReviewError("Teaching contract changed during acceptance.")
-    return {"contract": contract_reference, "validation": validation_reference}
+    verify_reference(timeline_reference, validation_path.parent, "manifest timeline")
+    return {
+        "contract": contract_reference, "validation": validation_reference,
+        "recomputed_validation": recomputed,
+    }
 
 
 def accept_production(
@@ -369,7 +404,12 @@ def accept_production(
     schema_version=1, status='passed', matching run_id, contract and timeline
     {path, sha256} references, and validation={valid: true, errors: [], ...}.
     Its timeline hash must match the manifest; raw/unbound validator output
-    cannot authorize acceptance. Preserve the original technical record file.
+    cannot authorize acceptance. Both acceptance and later verification rerun
+    teaching.validate_contract on the hash-bound contract and actual manifest
+    timeline. The independent result is retained as teaching.recomputed_validation.
+    Source text is not loaded or fetched: source/event omissions and all human
+    judgment boundaries remain explicit in that result, never assumed passed.
+    Preserve the original technical record and validation envelope files.
     """
     record = read_json(record_path)
     record_digest = sha256_file(record_path)
