@@ -88,6 +88,8 @@ def test_inspection_is_not_human_acceptance(manifest):
     assert record["technical"]["status"] == "passed"
     assert "audio_presence_and_duration" in record["technical"]["checks"]
     assert record["media"]["video_duration"] == pytest.approx(1)
+    assert "audio" not in record["artifacts"]
+    assert "audio_snapshot_hashes" not in record["technical"]["checks"]
 
 
 def test_probe_uses_existing_pyav_when_ffprobe_is_absent(media_files, monkeypatch):
@@ -145,7 +147,8 @@ def attach_audio_snapshot(manifest, tmp_path):
     return audio
 
 
-def test_optional_audio_snapshot_lists_are_preserved_and_rechecked(manifest, tmp_path):
+@pytest.mark.parametrize("mutation", ["modified", "missing"])
+def test_optional_audio_snapshot_lists_are_preserved_and_rechecked(manifest, tmp_path, mutation):
     audio = attach_audio_snapshot(manifest, tmp_path)
     record, evidence = prepared_review(manifest, tmp_path)
     inspected = read_json(record)
@@ -155,8 +158,16 @@ def test_optional_audio_snapshot_lists_are_preserved_and_rechecked(manifest, tmp
     accepted_path = tmp_path / "accepted.json"
     write_json(accepted_path, accepted)
     assert verify_acceptance(manifest, accepted_path) == accepted
-    audio.write_bytes(b"changed snapshot")
-    with pytest.raises(ReviewError, match="SHA-256 mismatch"):
+    if mutation == "modified":
+        audio.write_bytes(b"changed snapshot")
+    else:
+        audio.unlink()
+    error = "SHA-256 mismatch" if mutation == "modified" else "missing or empty"
+    with pytest.raises(ReviewError, match=error):
+        inspect_production(manifest)
+    with pytest.raises(ReviewError, match=error):
+        accept_production(manifest, record, evidence)
+    with pytest.raises(ReviewError, match=error):
         verify_acceptance(manifest, accepted_path)
 
 
