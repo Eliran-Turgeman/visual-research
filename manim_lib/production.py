@@ -7,6 +7,13 @@
 Provider options override the corresponding ``*_TTS_*`` environment settings.
 Only supported configuration fields, never credentials/environment dumps, are
 recorded. OpenAI transcription is disabled: block timing needs no Whisper model.
+Source fingerprints cover Git-tracked code/configuration/storyboard inputs using
+an extension allowlist, not just the selected scene. Declare untracked or
+external imports/narration inputs with repeatable ``--source-file PATH``.
+``source.files`` paths are relative to ``source.root`` unless absolute.
+The inventory is deliberately broader than an import graph; it does not claim
+all dynamic inputs were discovered. Fingerprints are checked again after render.
+Matching source/configuration does not promise bit-for-bit stochastic TTS output.
 
 Each invocation reserves OUTPUT_DIR/RUN_ID (never reused), sets MANIM_RUN_ID,
 MANIM_TIMELINE_PATH and MANIM_VOICEOVER_DIR, then invokes Manim without caching.
@@ -16,7 +23,7 @@ or acceptance record. Failed runs retain status ``failed`` for diagnostics.
 ``metrics.render_seconds`` measures the whole invocation through validation.
 
 Public building blocks: ``resolve_settings``, ``preflight``, ``find_ffmpeg``,
-``validate_timeline``, ``validate_media``, ``render`` and ``main``. No schema
+``validate_timeline``, ``validate_media``, ``source_snapshot``, ``render`` and ``main``. No schema
 framework is required. ``validate_timeline`` accepts legacy timelines unless a
 run ID is explicitly required; managed renders always require it. Managed scenes
 must use NarratedScene (or emit the same run-bound timeline protocol). For old
@@ -52,6 +59,10 @@ import uuid
 PROVIDERS = ("none", "openrouter", "gtts", "external-gtts", "openai", "azure")
 QUALITIES = ("-ql", "-qm", "-qh", "-qp", "-qk")
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_SUFFIXES = frozenset({
+    ".py", ".md", ".json", ".toml", ".yaml", ".yml", ".txt", ".csv", ".ssml",
+    ".ps1", ".sh",
+})
 DEFAULTS = {
     "none": {},
     "openrouter": {
@@ -355,16 +366,68 @@ def _versions(tools: dict) -> dict:
     }
 
 
-def _source(scene_file: Path) -> dict:
-    result = {"git_commit": None, "dirty": None, "scene_sha256": _sha256(scene_file)}
+def source_snapshot(scene_file: Path, extra_files: tuple[Path, ...] = ()) -> dict:
+    """Fingerprint tracked allowlisted inputs plus explicitly declared dependencies.
+
+    Does not execute source, follow tracked symlinks, read arbitrary environment
+    files or infer actual imports. External/untracked inputs must be declared.
+    """
+    scene_file = Path(scene_file).resolve()
+    declared = {scene_file, *(Path(path).resolve() for path in extra_files)}
+    for path in declared:
+        if path.suffix.lower() not in SOURCE_SUFFIXES or not path.is_file():
+            raise RenderError(
+                f"Declared source must be an existing code/storyboard/narration file "
+                f"with an allowlisted extension: {path}"
+            )
+    paths = set(declared)
+    result = {
+        "git_commit": None, "dirty": None, "scene_sha256": _sha256(scene_file),
+        "root": str(ROOT), "scope": "tracked-source-allowlist-and-declared",
+        "suffixes": sorted(SOURCE_SUFFIXES), "tracked_files_available": False,
+    }
     if shutil.which("git"):
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
         status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True)
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True,
+            text=True, encoding="utf-8",
+        )
         if commit.returncode == 0:
             result["git_commit"] = commit.stdout.strip()
         if status.returncode == 0:
             result["dirty"] = bool(status.stdout.strip())
+        if tracked.returncode == 0:
+            result["tracked_files_available"] = True
+            paths.update(
+                ROOT / name for name in tracked.stdout.split("\0")
+                if name and Path(name).suffix.lower() in SOURCE_SUFFIXES
+            )
+    result["files"] = []
+    for path in sorted(paths, key=str):
+        name = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+        entry = {"path": name}
+        if path.is_symlink():
+            entry["state"] = "symlink-not-followed"
+        elif not path.is_file():
+            entry["state"] = "missing"
+        else:
+            entry["sha256"] = _sha256(path)
+        result["files"].append(entry)
     return result
+
+
+def _verify_source_snapshot(snapshot: dict) -> None:
+    for entry in snapshot.get("files", []):
+        path = Path(snapshot["root"]) / entry["path"]
+        if entry.get("state") == "symlink-not-followed":
+            unchanged = path.is_symlink()
+        elif entry.get("state") == "missing":
+            unchanged = not path.exists()
+        else:
+            unchanged = not path.is_symlink() and path.is_file() and _sha256(path) == entry["sha256"]
+        if not unchanged:
+            raise RenderError(f"Source input changed during rendering; rerun with stable inputs: {path}")
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -392,6 +455,7 @@ def render(
     output_dir: Path = Path("media/runs"),
     run_id: str | None = None,
     require_tex: bool = False,
+    source_files: tuple[Path, ...] = (),
     **options,
 ) -> Path:
     """Render once and return manifest.json; never reuse a directory or old timeline."""
@@ -402,6 +466,7 @@ def render(
         raise RenderError("Scene name must be one Python class identifier.")
     settings = resolve_settings(profile=profile, **options)
     tools = preflight(scene_file, settings, require_tex=require_tex)
+    source = source_snapshot(scene_file, source_files)
     run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", run_id):
         raise RenderError("run_id must be 1-80 letters, digits, dots, underscores or hyphens, starting with a letter/digit.")
@@ -415,7 +480,7 @@ def render(
     manifest = {
         "schema_version": 1, "run_id": run_id, "profile": profile, "status": "rendering",
         "created_at": created_at, "scene_file": str(scene_file), "scene_name": scene_name,
-        "source": _source(scene_file), "settings": settings, "environment": _versions(tools),
+        "source": source, "settings": settings, "environment": _versions(tools),
         "metrics": {}, "artifacts": {},
     }
     _write_json(manifest_path, manifest)
@@ -457,6 +522,7 @@ def render(
             run_dir / "video.mp4", ffmpeg=tools["ffmpeg"],
             expect_audio=settings["provider"] != "none", scene_duration=timeline["scene_duration"],
         )
+        _verify_source_snapshot(source)
         manifest["artifacts"] = {
             name: {"path": path.name, "sha256": _sha256(path)}
             for name, path in (("video", run_dir / "video.mp4"), ("timeline", timeline_path))
@@ -490,6 +556,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("media/runs"))
     parser.add_argument("--run-id", help="Optional unique ID; existing run directories are rejected.")
     parser.add_argument("--require-tex", action="store_true", help="Preflight latex/dvisvgm even when TeX use is hidden in helpers.")
+    parser.add_argument(
+        "--source-file", dest="source_files", type=Path, action="append", default=[],
+        help="Declare an external/untracked source, storyboard or narration input to fingerprint; repeatable.",
+    )
     for key in ("model", "voice", "speed", "style", "style_degree"):
         parser.add_argument("--" + key.replace("_", "-"), help=f"Provider {key}; unsupported settings fail before synthesis.")
     args = vars(parser.parse_args(argv))

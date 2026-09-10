@@ -206,7 +206,7 @@ def fake_render(tmp_path, monkeypatch, local_video):
     source.write_text("class LocalScene: pass", encoding="utf-8")
     video = local_video("fixture.mp4")
     monkeypatch.setattr(p, "preflight", lambda *a, **kw: {"ffmpeg": p.find_ffmpeg(), "ffmpeg_version": "fixture ffmpeg"})
-    monkeypatch.setattr(p, "_source", lambda _: {"git_commit": "abc123", "dirty": False})
+    monkeypatch.setattr(p, "source_snapshot", lambda *args: {"git_commit": "abc123", "dirty": False})
     original_checked = p._checked
     seen = {}
     def checked(command, *, label, **kwargs):
@@ -285,10 +285,11 @@ def test_cli_parsing_and_exit_behavior(monkeypatch, tmp_path):
         seen.update(kwargs)
         return tmp_path / "manifest.json"
     monkeypatch.setattr(p, "render", render)
-    assert p.main(["scene with spaces.py", "A", "--profile", "production", "--provider", "gtts", "--quality=-qm"]) == 0
+    assert p.main(["scene with spaces.py", "A", "--profile", "production", "--provider", "gtts", "--quality=-qm", "--source-file", "narration.txt"]) == 0
     assert seen["scene_file"] == Path("scene with spaces.py")
     assert seen["quality"] == "-qm"
     assert seen["profile"] == "production"
+    assert seen["source_files"] == [Path("narration.txt")]
     def fail(**kwargs):
         raise p.RenderError("subprocess failed", 7)
     monkeypatch.setattr(p, "render", fail)
@@ -434,3 +435,74 @@ def test_real_production_mux_uses_only_locally_generated_audio(tmp_path, provide
     assert video["audio_duration"] > 0
     assert abs(video["audio_duration"] - video["duration"]) < 0.15
     assert list((manifest_path.parent / "audio").glob("*.mp3"))
+
+
+def test_source_snapshot_tracks_imports_storyboards_and_declared_inputs(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    files = {
+        "scene.py": "from imported import Example",
+        "imported.py": "class Example: pass",
+        "storyboard.md": "Worked example",
+        "narration.txt": "Explain the mechanism",
+        ".env": "PRIVATE_KEY=never-fingerprint",
+        "credentials.bin": "never-fingerprint",
+    }
+    for name, content in files.items():
+        (root / name).write_text(content, encoding="utf-8")
+    external = tmp_path / "external_storyboard.json"
+    external.write_text('{"beat":"worked"}', encoding="utf-8")
+    monkeypatch.setattr(p, "ROOT", root)
+    def git(command, **kwargs):
+        output = "revision\n" if command[1] == "rev-parse" else (
+            "\0".join([*files, "deleted.py"]) + "\0" if command[1] == "ls-files" else " M imported.py\n"
+        )
+        return SimpleNamespace(returncode=0, stdout=output)
+    monkeypatch.setattr(p.subprocess, "run", git)
+    snapshot = p.source_snapshot(root / "scene.py", (external,))
+    assert snapshot["git_commit"] == "revision"
+    assert snapshot["dirty"] is True
+    assert snapshot["tracked_files_available"]
+    entries = {entry["path"]: entry for entry in snapshot["files"]}
+    assert entries["imported.py"]["sha256"] == hashlib.sha256(files["imported.py"].encode()).hexdigest()
+    assert entries["storyboard.md"]["sha256"]
+    assert entries["narration.txt"]["sha256"]
+    assert entries[str(external)]["sha256"]
+    assert entries["deleted.py"]["state"] == "missing"
+    assert ".env" not in entries
+    assert "credentials.bin" not in entries
+    p._verify_source_snapshot(snapshot)
+    (root / "imported.py").write_text("changed imported dependency", encoding="utf-8")
+    with pytest.raises(p.RenderError, match="changed during rendering"):
+        p._verify_source_snapshot(snapshot)
+
+
+def test_source_snapshot_without_git_and_missing_declared_input(tmp_path, monkeypatch):
+    source = tmp_path / "scene.py"
+    source.write_text("pass", encoding="utf-8")
+    monkeypatch.setattr(p.shutil, "which", lambda _: None)
+    snapshot = p.source_snapshot(source)
+    assert snapshot["git_commit"] is None
+    assert snapshot["dirty"] is None
+    assert not snapshot["tracked_files_available"]
+    assert len(snapshot["files"]) == 1
+    with pytest.raises(p.RenderError, match="Declared source"):
+        p.source_snapshot(source, (tmp_path / "missing.md",))
+    secret = tmp_path / ".env"
+    secret.write_text("SECRET=do-not-fingerprint", encoding="utf-8")
+    with pytest.raises(p.RenderError, match="allowlisted"):
+        p.source_snapshot(source, (secret,))
+
+
+def test_changed_source_during_render_fails_manifest(fake_render, monkeypatch):
+    source, output, _ = fake_render
+    snapshot = {
+        "root": str(source.parent),
+        "files": [{"path": source.name, "sha256": "different-content"}],
+    }
+    monkeypatch.setattr(p, "source_snapshot", lambda *args: snapshot)
+    with pytest.raises(p.RenderError, match="changed during rendering"):
+        p.render(source, "LocalScene", output_dir=output, run_id="changed-input")
+    manifest = json.loads((output / "changed-input" / "manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifacts"] == {}
