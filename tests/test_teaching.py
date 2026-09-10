@@ -177,7 +177,7 @@ def test_combined_episode_maps_all_actual_narration_including_loop_selections():
     assert texts == [beat["narration"]["text"] for beat in document["beats"]]
 
 
-def test_flow_maps_actual_text_without_passing_unresolved_claim_support():
+def test_flow_maps_repaired_block_drafting_and_latency_qualifiers():
     document = contract("speculative_decoding_flow")
     source = next(s for s in document["sources"] if s["id"] == "scene")
     module = ast.parse(pinned_source(source))
@@ -201,10 +201,35 @@ def test_flow_maps_actual_text_without_passing_unresolved_claim_support():
     assert len(texts) == 8
     report = teaching.validate_contract(document, timeline=timeline_for(document))
     assert report["valid"]
-    unresolved = {check.get("claim") for check in report["omitted_checks"] if check["check"] == "claim_support"}
-    assert unresolved == {"unqualified-parallel-draft", "unquantified-speedup"}
-    assert "unresolved_claim" in codes(report, "warnings")
+    assert "unresolved_claim" not in codes(report, "warnings")
+    assert not any(check["check"] == "claim_support" for check in report["omitted_checks"])
+    assert "block drafting" in texts[4]
+    assert "not a guaranteed latency reduction" in texts[7]
     assert report["evidence"]["production_acceptance"] == "not_assessed"
+
+
+def test_unresolved_claim_support_is_omitted_not_counted_as_passed():
+    document = contract()
+    claim = document["claims"][0]
+    claim.update({"status": "unresolved", "evidence": [], "explanation": "Independent support is unavailable in this fixture."})
+    report = teaching.validate_contract(document)
+    assert report["valid"]
+    assert "unresolved_claim" in codes(report, "warnings")
+    assert any(check["check"] == "claim_support" and check["claim"] == claim["id"]
+               for check in report["omitted_checks"])
+
+
+def test_block_draft_cost_is_one_explicit_nonzero_pass():
+    document = contract("speculative_decoding_flow")
+    check = document["worked_examples"][0]["checks"][0]
+    assert check["input"]["draft_steps"] == 1
+    assert check["input"]["token_count"] == 3
+    report = teaching.evaluate_check(check)
+    assert report["passed"]
+    assert Fraction(report["actual"]["draft_end"]) == Fraction("2.4")
+    assert Fraction(report["actual"]["speculative_end"]) == Fraction("3.4")
+    check["input"]["draft_steps"] = 0
+    assert not teaching.evaluate_check(check)["passed"]
 
 
 def test_partial_mapping_is_explicitly_omitted_not_counted_as_passed():
