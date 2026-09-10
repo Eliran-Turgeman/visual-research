@@ -9,15 +9,64 @@ drafting) to engineers with rusty math. One evolving picture, no slides.
 2. How a standard drafter fills slots one-by-one.
 3. How DFlash predicts a masked future block in **one parallel pass**.
 4. How target hidden features condition the small draft model (K/V injection).
-5. Why the output is *marginals* (independent per-position), not conditionals.
+5. Why per-position marginals share context, but not earlier draft choices.
 6. How the target model verifies proposals in one pass.
-7. Why speculative decoding is lossless (bonus-token guarantee).
-8. Brief bridge to DDTree as the next episode.
+7. Why a mismatch discards the entire suffix, even a later matching token.
+8. Why target-driven decisions preserve **greedy output**, while the target
+   bonus separately guarantees progress.
+9. Brief bridge to DDTree as the next episode.
+
+## Decoding regime and worked example
+
+This episode demonstrates **greedy decoding (temperature = 0)**, not a
+stochastic acceptance/rejection algorithm. Draft tokens and target decisions
+are argmax choices. All probabilities are **toy values**, not measurements,
+acceptance rates, or reported DFlash performance.
+
+With committed context `We see`, the draft proposes `the model works`.
+One causal target pass computes the following choices:
+
+| Position | Draft | Target argmax | Target's conditioning suffix | Action |
+|---|---|---|---|---|
+| 1 | the | the | empty | Accept |
+| 2 | model | system | the | First miss; take target's system |
+| 3 | works | works | the model | Discard despite the apparent match |
+| 4 | — | well | the model works | Unused; this is after the wrong prefix |
+
+The accepted prefix has length **k = 1**, not two independent matches.
+Commit `the`, then the target token at the first miss, `system`. The ribbon
+becomes **`We see the system`**. Neither `model` nor `works` is committed.
+The next iteration must use this corrected prefix.
+
+For `n` proposals, verification supplies `n + 1` target choices:
+`k` is the number of consecutive matches from the start, and the committed
+extension is `proposals[:k] + (target_choices[k],)`. If the very first proposal
+misses, `k = 0` and the target still supplies one token. If all proposals
+match, `k = n` and the target bonus follows the entire block. EOS and length
+limits still terminate generation normally; the scene omits cache management
+and treats the last verified token as part of the displayed context.
+
+**Correctness is not a progress argument.** Inductively, each accepted token
+equals the target's greedy choice on the actual committed prefix. At the
+first miss, the target choice is still conditioned on that correct prefix;
+later predictions are not. The same target model, causal context, logits
+processing, and deterministic tie-breaking therefore give the same tokens as
+target-only greedy decoding (assuming equivalent numerical decisions).
+Adding a token merely guarantees progress. This worked example does **not**
+establish distributional equivalence for nonzero-temperature sampling.
 
 ## References
 
-- Chen, Liang, and Liu, *DFlash: Block Diffusion for Flash Speculative
-  Decoding*, arXiv:2602.06036.
+- Chen, Liang, and Liu, [*DFlash: Block Diffusion for Flash Speculative
+  Decoding*](https://arxiv.org/abs/2602.06036), arXiv:2602.06036.
+- [Official DFlash project explanation](https://z-lab.ai/projects/dflash/):
+  target-feature fusion, per-layer K/V injection, and single-pass drafting.
+- [Official implementation, pinned before DFlash 2](https://github.com/z-lab/dflash/blob/44947fbf71114e241c96de194f4b382b5dd330d0/dflash/model.py):
+  `sample` selects argmax at temperature zero; `dflash_generate` uses
+  cumulative-product prefix acceptance and `posterior[acceptance_length]`
+  for the next target token. It also supports target sampling at nonzero
+  temperature; this episode deliberately limits its demonstration and
+  equivalence claim to the greedy branch.
 - Ringel and Romano, *Accelerating Speculative Decoding with Block Diffusion
   Draft Trees*, arXiv:2604.12989.
 
@@ -62,22 +111,33 @@ $env:MANIM_TTS_PROVIDER = "none"
 ```powershell
 $env:OPENROUTER_API_KEY = (Get-ItemProperty HKCU:\Environment).OPENROUTER_API_KEY
 $env:MANIM_TTS_PROVIDER = "openrouter"
-.\.venv\Scripts\python.exe -m manim -qk --fps 60 examples\dflash_visual\scene.py DFlashVisualExplainer
+.\.venv\Scripts\python.exe -m manim -qh examples\dflash_visual\scene.py DFlashVisualExplainer
 ```
 
 Final output: `media\videos\scene\1080p60\DFlashVisualExplainer.mp4`
+(`-qh` is 1920×1080 at 60 fps; `-qk` would request 4K instead).
 
 ## Storyboard
 
 `storyboard.py` is the single source of truth for narration text, beat
-structure, and toy numerical data. The scene imports every beat's narration
-from there; numbers displayed in probability distributions are derived from
-the same `Q1`, `Q2`, `Q3` marginals used in the combined example.
+structure, toy draft marginals, and prefix-keyed target conditionals. The
+scene constructs bars and value labels directly from `DRAFT_MARGINALS`
+(`Q1`, `Q2`, `Q3`), and target labels and commit positions from the computed
+greedy verification result. A separate target-only walk supplies the visible
+baseline, rather than copying the committed tuple.
+
+Tests enumerate all toy paths with exact rational probabilities and compare
+every match pattern through length four against an independent cumulative-
+product oracle. They also execute the scene silently, inspect displayed
+values, target labels, token states and geometry, and construct first-miss,
+last-miss, and all-accepted cases. These tests establish the teaching example's
+logic, not numerical equivalence of real model kernels.
 
 ## Continuity with DDTree episode
 
 This episode ends with a brief bridge mentioning DDTree. The DDTree episode
-should pick up from the committed ribbon and bonus token shown here.
+can pick up from the prefix-acceptance and target-bonus concepts shown here;
+this episode ends with a rejection case, not a full-block acceptance.
 Shared references:
 - Toy marginals `Q1`, `Q2`, `Q3` (same values as `examples/ddtree_dflash/algorithm.py`)
 - Bonus-token semantics and verification behavior

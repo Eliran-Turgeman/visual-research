@@ -1,0 +1,82 @@
+{
+  "schema_version":1,
+  "scope":"Reduced semantic counterexamples grounded in inspected repository data. These exercise teaching acceptance inputs, not another agent's scene implementation tests or rendered pixels.",
+  "source_revision":"aebec5f3b4a03a6db3051a885db9e1abe99a8505",
+  "repaired_dflash_revision":"463bc88baaab3ad12c73f7991a8e45f5002b9c3f",
+  "checks":[
+    {
+      "id":"full-sequence-equals-only-first-marginal",
+      "origin":"Original examples\\ddtree_dflash\\scene.py EquationSteps claimed Q(y1,y2,y3)=q1(y1) before adding factors. The actual toy path gives a numerical counterexample; repaired code scopes the left-hand side to each prefix.",
+      "check":{"kind":"rounded_product","input":{"factors":["0.55","0.60","0.52"],"displayed":"0.55","relation":"=","decimal_places":2},"expected":{"exact_product":"0.171600"}},
+      "passed":false,
+      "message":"False equality"
+    },
+    {
+      "id":"rounded-ddtree-product-as-equality",
+      "origin":"examples\\ddtree_visual\\scene.py, _beat_4_complete_budget: _toy rounds prefix.mass but the MathTex relation was '='.",
+      "check":{"kind":"rounded_product","input":{"factors":["0.33","0.52"],"displayed":"0.172","relation":"=","decimal_places":3},"expected":{"exact_product":"0.1716"}},
+      "passed":false,
+      "message":"False equality"
+    },
+    {
+      "id":"same-product-with-honest-approximation",
+      "origin":"examples\\ddtree_full\\storyboard.py BEATS[11] correctly distinguishes 0.1716 from about 0.172.",
+      "check":{"kind":"rounded_product","input":{"factors":["0.33","0.52"],"displayed":"0.172","relation":"approximately","decimal_places":3},"expected":{"exact_product":"0.1716"}},
+      "passed":true
+    },
+    {
+      "id":"discarded-target-miss",
+      "origin":"examples\\ddtree_full\\storyboard.py TARGET_CHOICES/ACCEPTED/BONUS: reduced output mutation that mistakes matched proposal tokens for all emitted tokens.",
+      "check":{"kind":"greedy_tree_walk","input":{"paths":[[],["a"],["a","model"],["a","model","works"]],"decisions":[{"prefix":[],"token":"a"},{"prefix":["a"],"token":"model"},{"prefix":["a","model"],"token":"runs"}]},"expected":{"matched":["a","model"],"emitted":["a","model"],"next_anchor":"runs"}},
+      "passed":false,
+      "message":"Expected state disagrees"
+    },
+    {
+      "id":"draft-works-substituted-for-target-runs",
+      "origin":"The same real DDTree greedy trace: proposal mass is not authority to replace the missing target-selected runs with proposed works.",
+      "check":{"kind":"greedy_tree_walk","input":{"paths":[[],["a"],["a","model"],["a","model","works"]],"decisions":[{"prefix":[],"token":"a"},{"prefix":["a"],"token":"model"},{"prefix":["a","model"],"token":"runs"}]},"expected":{"matched":["a","model"],"emitted":["a","model","works"],"next_anchor":"works"}},
+      "passed":false,
+      "message":"Expected state disagrees"
+    },
+    {
+      "id":"zero-probability-positive-fill",
+      "origin":"manim_lib\\probability.py DistributionEntry used max(max_bar_width * value, 0.05). At default max width 2, zero mass drew 0.025 of a full mass bar.",
+      "check":{"kind":"probability_graphic","input":{"probability":"0","fill_fraction":"0.025"},"expected":{"fill_fraction":"0"}},
+      "passed":false,
+      "message":"including exactly zero"
+    },
+    {
+      "id":"zero-mass-with-empty-fill",
+      "origin":"A track/outline may remain visible at zero; the mass-bearing fill must be empty.",
+      "check":{"kind":"probability_graphic","input":{"probability":"0","fill_fraction":"0"},"expected":{"fill_fraction":"0"}},
+      "passed":true
+    },
+    {
+      "id":"omitted-sequential-drafting-overhead",
+      "origin":"examples\\speculative_decoding_timeline\\scene.py ToyTiming includes three draft steps. The older flow's target-call count must not be substituted for total work time.",
+      "check":{"kind":"serial_cost","input":{"token_count":3,"target_pass":"1","draft_step":"0.2","verification":"1"},"expected":{"baseline_end":"3","draft_end":"0.6","speculative_end":"1"}},
+      "passed":false,
+      "message":"Expected state disagrees"
+    },
+    {
+      "id":"dflash-later-match-after-wrong-prefix",
+      "origin":"Repaired dflash_visual TARGET_CONDITIONALS at 463bc88: the target chooses system after the, so the later works computed after the model cannot be appended to the system.",
+      "check":{"kind":"greedy_tree_walk","input":{"paths":[[],["the"],["the","model"],["the","model","works"]],"conditionals":[{"prefix":[],"distribution":{"the":"0.70","a":"0.30"}},{"prefix":["the"],"distribution":{"model":"0.20","system":"0.80"}},{"prefix":["the","model"],"distribution":{"works":"0.90","fails":"0.10"}},{"prefix":["the","model","works"],"distribution":{"well":"0.60","now":"0.40"}}]},"expected":{"matched":["the","works"],"emitted":["the","system","works"],"next_anchor":"system"}},
+      "passed":false,
+      "message":"Expected state disagrees"
+    }
+  ],
+  "contract_cases":[
+    {"id":"toy-is-not-measured-speedup","origin":"The canonical timeline labels its costs illustrative; changing its toy-clock claim to empirical cannot turn source code constants into measurements.","episode":"speculative_decoding_timeline","claim_id":"toy-clock","field":"kind","value":"empirical","error":"unsupported_claim"},
+    {"id":"empty-evidence-is-not-correctness","origin":"A source URL list is not claim-level support. Removing the DDTree Q-surrogate evidence must fail, even while its arithmetic remains correct.","episode":"ddtree_full","claim_id":"selection","field":"evidence","value":[],"error":"unsupported_claim"}
+  ],
+  "timeline_case":{
+    "id":"duration-target-is-not-a-hard-cut",
+    "origin":"examples\\speculative_decoding_timeline\\README.md says presentation targets are not hard cuts. A long real narration block requires explained pacing review, not changed toy cost or automatic failure.",
+    "episode":"speculative_decoding_timeline",
+    "block_index":5,
+    "duration":12,
+    "warning":"duration_review",
+    "expected_valid":true
+  }
+}

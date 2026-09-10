@@ -27,8 +27,9 @@ from manim import (
     GrowFromPoint,
     LaggedStart,
     Line,
-    MathTex,
     MoveToTarget,
+    ReplacementTransform,
+    Restore,
     RoundedRectangle,
     SurroundingRectangle,
     Text,
@@ -78,7 +79,7 @@ from manim_lib.theme import (
     TYPOGRAPHY,
 )
 from manim_lib.composition import center_group, place_at_safe_edge
-from manim_lib.continuity import identity_rearrange, map_ancestry_to_mask
+from manim_lib.continuity import map_ancestry_to_mask
 from manim_lib.focus import focus_on, restore_focus
 from manim_lib.probability import (
     ProbabilityDistribution,
@@ -245,6 +246,29 @@ class DDTreeVisualExplainer(NarratedScene):
         """Return the marginal value from Q at the given depth."""
         return [Q1, Q2, Q3][depth - 1][token]
 
+    def _prefix_computation(self, prefix) -> Computation:
+        """Keep prefix masses exact while marking rounded display results."""
+        parent_mass = self._node_masses[prefix.parent]
+        marginal = self._marginal_value(prefix.depth, prefix.token)
+        return Computation(
+            Operand("parent prefix mass", parent_mass, tex=_toy(parent_mass)),
+            Operand(
+                f"q_{prefix.depth}({prefix.token})",
+                marginal,
+                tex=_toy(marginal, 2),
+            ),
+            leading_zero=False,
+        )
+
+    def _adopt_ribbon_slot(self, index: int, slot: TokenBox):
+        """Keep the ribbon's membership in sync after a visible replacement."""
+        self._ribbon_slots[index] = slot
+        self._ribbon.remove(*self._ribbon.submobjects)
+        self._ribbon.add(
+            self._ribbon_ctx, self._ribbon_bonus, *self._ribbon_slots,
+        )
+        self.add(self._ribbon)
+
     # ── Beat 0: Single path fails ────────────────────────────────────
 
     def _beat_0_single_path_fails(self):
@@ -343,6 +367,7 @@ class DDTreeVisualExplainer(NarratedScene):
         beat = BEATS[1]
 
         # Dim distributions and ribbon to make room for tree
+        self._ribbon.save_state()
         self.play(
             self._dist_group.animate.set_opacity(0.35),
             self._dist_labels.animate.set_opacity(0.35),
@@ -379,7 +404,6 @@ class DDTreeVisualExplainer(NarratedScene):
             self.paced(
                 tracker,
                 GrowFromPoint(e_the, root_node.get_center()),
-                FadeIn(n_the, shift=DOWN * 0.08),
                 mass_anim_the,
                 fraction=0.18,
             )
@@ -397,7 +421,6 @@ class DDTreeVisualExplainer(NarratedScene):
             self.paced(
                 tracker,
                 GrowFromPoint(e_a, root_node.get_center()),
-                FadeIn(n_a, shift=DOWN * 0.08),
                 mass_anim_a,
                 fraction=0.18,
             )
@@ -425,19 +448,10 @@ class DDTreeVisualExplainer(NarratedScene):
 
         with self.narrate(beat.narration) as tracker:
             for i, prefix in enumerate(remaining):
-                parent_mass = self._node_masses[prefix.parent]
-                marginal = self._marginal_value(prefix.depth, prefix.token)
-
-                # Build product equation
-                eq = MathTex(
-                    _toy(parent_mass),
-                    r"\times",
-                    _toy(marginal, 2),
-                    "=",
-                    _toy(prefix.mass),
-                    font_size=22,
+                computation = self._prefix_computation(prefix)
+                eq = computation.build_equation(
+                    font_size=22, result_color=BONUS_COLOR,
                 )
-                eq[-1].set_color(BONUS_COLOR)
                 eq.next_to(
                     self._tree.nodes[prefix.parent], RIGHT, buff=0.5
                 )
@@ -477,8 +491,7 @@ class DDTreeVisualExplainer(NarratedScene):
 
     def _animate_deep_selection(self, beat, prefix):
         """Animate a single depth>1 selection with visible product."""
-        parent_mass = self._node_masses[prefix.parent]
-        marginal = self._marginal_value(prefix.depth, prefix.token)
+        computation = self._prefix_computation(prefix)
         parent_node = self._tree.nodes[prefix.parent]
 
         # Highlights
@@ -491,15 +504,9 @@ class DDTreeVisualExplainer(NarratedScene):
         )
 
         # Product equation
-        eq = MathTex(
-            _toy(parent_mass),
-            r"\times",
-            _toy(marginal, 2),
-            "=",
-            _toy(prefix.mass),
-            font_size=24,
+        eq = computation.build_equation(
+            font_size=24, result_color=BONUS_COLOR,
         )
-        eq[-1].set_color(BONUS_COLOR)
         eq.next_to(parent_node, RIGHT, buff=0.6)
         if eq.get_right()[0] > 6.2:
             eq.shift(LEFT * (eq.get_right()[0] - 6.0))
@@ -527,7 +534,7 @@ class DDTreeVisualExplainer(NarratedScene):
             target_score = node.prepare_score(
                 _toy(prefix.mass), **SCORE_STYLE
             )
-            result_copy = eq[-1].copy()
+            result_copy = computation.result_term(eq).copy()
             self.add(result_copy)
             self.paced(
                 tracker,
@@ -566,18 +573,25 @@ class DDTreeVisualExplainer(NarratedScene):
         # Fade tree edges
         edge_fadeouts = [FadeOut(e) for e in self._tree.edges.values()]
 
-        # Build rearrangement animations
-        rearrange_anims = identity_rearrange(nodes, flat_positions)
-
-        # Scale nodes to match flat tokens
-        scale_anims = [nd.animate.scale(0.85) for nd in nodes]
-
         with self.narrate(beat.narration) as tracker:
-            if score_fadeouts:
-                self.paced(tracker, *score_fadeouts, fraction=0.12)
             self.paced(
                 tracker,
-                *edge_fadeouts, *rearrange_anims, *scale_anims,
+                *score_fadeouts,
+                FadeOut(self._dist_group),
+                FadeOut(self._dist_labels),
+                fraction=0.12,
+            )
+            rearrange_anims = []
+            for node, position in zip(nodes, flat_positions):
+                if node.score_label is not None:
+                    node.remove(node.score_label)
+                # One target per node: separate move/scale animations compete.
+                node.generate_target()
+                node.target.scale(0.85).move_to(position)
+                rearrange_anims.append(MoveToTarget(node))
+            self.paced(
+                tracker,
+                *edge_fadeouts, *rearrange_anims,
                 fraction=0.40,
             )
 
@@ -765,9 +779,10 @@ class DDTreeVisualExplainer(NarratedScene):
             # Restore ribbon opacity
             self.paced(
                 tracker,
-                self._ribbon.animate.set_opacity(1.0),
+                Restore(self._ribbon),
                 fraction=0.08,
             )
+            self._ribbon_bonus.set_state(TokenState.ACCEPTED)
 
             # Move accepted nodes up to ribbon and replace slot labels
             for i, tok in enumerate(COMMITTED_TOKENS):
@@ -788,27 +803,30 @@ class DDTreeVisualExplainer(NarratedScene):
                         new_slot.scale(0.78)
                         new_slot.move_to(self._ribbon_slots[i])
                         self.play(
-                            FadeOut(self._ribbon_slots[i]),
-                            FadeIn(new_slot),
+                            ReplacementTransform(self._ribbon_slots[i], new_slot),
                             FadeOut(node),
                             run_time=0.4,
                         )
-                        self._ribbon_slots[i] = new_slot
+                        self._adopt_ribbon_slot(i, new_slot)
                         break
 
-            # Add bonus token
+            # The target miss fills the next position, not a position after
+            # the old proposal masks. It is the next round's active bonus.
+            bonus_index = len(COMMITTED_TOKENS)
             bonus_box = TokenBox(
                 BONUS_TOKEN, state=TokenState.ACTIVE,
                 width=0.85, font_size=22,
             )
             bonus_box.scale(0.78)
-            bonus_box.next_to(self._ribbon, RIGHT, buff=0.1)
+            bonus_box.move_to(self._ribbon_slots[bonus_index])
 
             self.paced(
                 tracker,
-                FadeIn(bonus_box, shift=UP * 0.1),
+                ReplacementTransform(self._ribbon_slots[bonus_index], bonus_box),
                 fraction=0.14,
             )
+            self._adopt_ribbon_slot(bonus_index, bonus_box)
+            self._committed_ribbon = self._ribbon
 
             # Closing label
             closing = Text(
