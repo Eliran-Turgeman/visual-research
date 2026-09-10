@@ -21,6 +21,8 @@ The final manifest's status is ``rendered`` only after successful encoding,
 full media decoding and matching timeline identity/duration. It is not a review
 or acceptance record. Failed runs retain status ``failed`` for diagnostics.
 ``metrics.render_seconds`` measures the whole invocation through validation.
+Successful runs also expose measured ``metrics.video_seconds``, equal to
+``artifacts.video.duration``; failed runs do not fabricate a video denominator.
 
 Public building blocks: ``resolve_settings``, ``preflight``, ``find_ffmpeg``,
 ``validate_timeline``, ``validate_media``, ``source_snapshot``, ``render`` and ``main``. No schema
@@ -528,6 +530,7 @@ def render(
             for name, path in (("video", run_dir / "video.mp4"), ("timeline", timeline_path))
         }
         manifest["artifacts"]["video"].update(media)
+        manifest["metrics"]["video_seconds"] = media["duration"]
         manifest["status"] = "rendered"
     except Exception as exc:
         manifest["status"] = "failed"

@@ -234,6 +234,7 @@ def test_manifest_config_redaction_hashes_identity_and_metrics(fake_render, monk
     assert manifest["run_id"] == "run-test"
     assert manifest["settings"] == {"quality": "-qm", "provider": "none"}
     assert manifest["metrics"]["render_seconds"] > 0
+    assert manifest["metrics"]["video_seconds"] == manifest["artifacts"]["video"]["duration"] == 1.0
     assert manifest["environment"]["python"]
     assert manifest["environment"]["manim"]
     assert manifest["source"]["git_commit"] == "abc123"
@@ -271,6 +272,7 @@ def test_failed_subprocess_or_artifacts_never_become_rendered(fake_render, monke
     assert manifest["status"] == "failed"
     assert manifest["artifacts"] == {}
     assert manifest["metrics"]["render_seconds"] > 0
+    assert "video_seconds" not in manifest["metrics"]
 
 
 def test_checked_subprocess_preserves_failure_exit_code():
