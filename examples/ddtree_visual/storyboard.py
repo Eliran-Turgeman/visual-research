@@ -49,7 +49,7 @@ PREFIXES: tuple[Prefix, ...] = tuple(
 VANILLA_PATH = ("the", "model", "works")
 TARGET_FIRST_CHOICE = "a"
 
-# Flatten order (BFS by subtree): root + 7 prefixes
+# Flatten order: root, then the seven best-first insertions (not breadth-first).
 FLATTEN_ORDER = (
     "root",
     "the",
@@ -126,8 +126,10 @@ BEATS: tuple[Beat, ...] = (
         continuity_link="Distributions dim; tree starts growing in lower half",
         narration=(
             "Instead of betting on one path, DDTree keeps alternatives. "
-            "The objective is expected matched depth, which equals the sum "
-            "of every node's prefix mass. A max-heap seeded with the best "
+            "For sequences drawn from the factorized draft distribution Q, "
+            "expected matched depth is the sum of selected prefix masses. "
+            "This is a draft-model proxy, not a target acceptance guarantee. "
+            "A max-heap seeded with the best "
             "depth-one token selects the highest-mass prefixes. "
             "First pop: 'the' at point five five. "
             "Second pop: 'a' at point three five. "
@@ -191,17 +193,16 @@ BEATS: tuple[Beat, ...] = (
         viewer_question="How does the target model see this tree?",
         visible_state="Completed 7-node tree",
         single_change=(
-            "Tree nodes straighten into flat token sequence; "
+            "Tree nodes straighten into a flat token sequence in insertion order; "
             "position IDs from depth, not array index; "
             "identity preserved: same objects move"
         ),
         continuity_link="Tree nodes are the flat tokens — identity preserved",
         narration=(
-            "The target model receives a flat token array, not a tree. "
-            "The same node objects slide into a horizontal sequence. "
-            "Position IDs come from tree depth: both 'the' and 'a' share "
-            "position one because they are alternative continuations at "
-            "the same depth."
+            "The target receives a flat array in insertion order: root, "
+            "then best-first pops. The same nodes move; position IDs still "
+            "come from tree depth. Both 'the' and 'a' use position one "
+            "because they are alternatives at the same depth."
         ),
         duration_range=(8.0, 12.0),
     ),

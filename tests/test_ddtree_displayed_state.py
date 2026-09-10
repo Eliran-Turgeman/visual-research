@@ -180,6 +180,33 @@ def test_flatten_preserves_nodes_and_executes_both_move_and_scale(executed_scene
         )
 
 
+def test_narrated_objective_is_expected_depth_under_q_not_target_acceptance(
+    executed_scenes,
+):
+    _, scene, module = executed_scenes
+    narration = scene._review_blocks[1]["text"]
+    assert "factorized draft distribution Q" in narration
+    assert "draft-model proxy" in narration
+    assert "not a target acceptance guarantee" in narration
+    marginals = [module.Q1, module.Q2, module.Q3]
+    paths = {prefix.path for prefix in module.PREFIXES}
+    expected_depth = sum(
+        prod(q[token] for q, token in zip(marginals, path))
+        * sum(path[:depth] in paths for depth in range(1, len(path) + 1))
+        for path in product(*marginals)
+    )
+    assert expected_depth == pytest.approx(sum(
+        mass for key, mass in scene._node_masses.items() if key != "root"
+    ))
+    assert expected_depth != pytest.approx(len(scene._verified_keys))
+
+
+def test_narrated_flatten_order_matches_real_insertion_order(executed_scenes):
+    _, scene, _ = executed_scenes
+    assert "insertion order" in scene._review_blocks[5]["text"]
+    assert tuple(scene._flat_node_refs) == tuple(scene.nodes_before_flatten)
+
+
 def test_commit_displays_the_exact_target_sequence_without_old_masks(executed_scenes):
     _, scene, _ = executed_scenes
     visible = [
