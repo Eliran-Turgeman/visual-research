@@ -150,6 +150,52 @@ def test_missing_accepted_duration_never_produces_a_bounded_ratio():
     assert total["cost_per_accepted_minute"]["coverage"] == "unknown"
 
 
+def test_verified_review_duration_enables_cost_per_minute_without_supplied_duration():
+    record = manifest()
+    accepted = {**review(record), "media": {"video_duration": 120}}
+    total = summarize_runs(
+        [record], accounting(supplied(cost=cost(0.4))), [accepted],
+        validate_review=fixture_validator,
+    )["totals"]
+    assert total["accepted_video_seconds"]["value"] == 120
+    assert total["accepted_video_seconds"]["provenance"] == {
+        "manifest": 0, "supplied": 0, "verified_review": 1,
+    }
+    assert total["cost_per_accepted_minute"]["amount"] == pytest.approx(0.2)
+    assert total["cost_per_accepted_minute"]["coverage"] == "complete"
+
+
+def test_unaccepted_review_metadata_cannot_supply_accepted_duration():
+    record = manifest()
+    evidence = {**review(record, accepted=False), "media": {"video_duration": 120}}
+    total = summarize_runs(
+        [record], accounting(supplied(cost=cost())), [evidence],
+        validate_review=fixture_validator,
+    )["totals"]
+    assert total["accepted_outputs"] == 0
+    assert total["accepted_video_seconds"]["value"] is None
+    assert total["cost_per_accepted_minute"]["amount"] is None
+
+
+@pytest.mark.parametrize("duration", [-1, 0, float("nan"), float("inf"), True])
+def test_invalid_verified_review_duration_is_rejected(duration):
+    record = manifest()
+    accepted = {**review(record), "media": {"video_duration": duration}}
+    with pytest.raises(MetricsError):
+        summarize_runs([record], reviews=[accepted], validate_review=fixture_validator)
+
+
+def test_conflicting_verified_and_reported_durations_are_rejected():
+    record = manifest(video_seconds=60)
+    accepted = {**review(record), "media": {"video_duration": 120}}
+    with pytest.raises(MetricsError, match="conflicts with verified review"):
+        summarize_runs([record], reviews=[accepted], validate_review=fixture_validator)
+    accepted["media"]["video_duration"] = 60.0001
+    total = summarize_runs([record], reviews=[accepted], validate_review=fixture_validator)["totals"]
+    assert total["accepted_video_seconds"]["value"] == 60.0001
+    assert total["accepted_video_seconds"]["provenance"]["verified_review"] == 1
+
+
 def test_measured_usage_and_supplied_usage_have_explicit_provenance():
     runs = [
         manifest("run-1", narration_requests=4, repeated_narration_requests=2, narration_cache_hits=1),

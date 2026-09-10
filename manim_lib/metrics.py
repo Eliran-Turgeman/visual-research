@@ -44,6 +44,11 @@ evidence, current manifest/artifact hash bindings, and acceptance requirements.
 There is deliberately no default validator and no manifest acceptance flag.
 The CLI accepts only durable accepted records and uses the repository's
 ``verify_acceptance(manifest_path, accepted_path)`` rather than inventing approvals.
+After validation, review ``media.video_duration`` supplies the measured accepted
+duration with ``verified_review`` provenance. Any independently reported
+``video_seconds`` must agree within 1 ms; remove rounded supplied durations
+rather than replacing verified media evidence. Unvalidated review metadata
+never supplies a duration.
 
 Reports preserve unknowns as null. Partial nonnegative sums are marked
 ``lower_bound``; ratios with incomplete duration denominators remain unknown.
@@ -199,6 +204,10 @@ def _measurement(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
         "provenance": {
             "manifest": sum(row["origins"][key] == "manifest" for row in known),
             "supplied": sum(row["origins"][key] == "supplied" for row in known),
+            **(
+                {"verified_review": sum(row["origins"][key] == "verified_review" for row in known)}
+                if key == "video_seconds" else {}
+            ),
         },
     }
 
@@ -343,6 +352,17 @@ def summarize_runs(
             accepted = validate_review(manifest, review)
             if type(accepted) is not bool:
                 raise MetricsError("Bound-review validator must return bool, not a truthy record")
+            if accepted and review.get("media") is not None:
+                media = _object(review["media"], f"{run_id}.review.media")
+                duration = _number(media.get("video_duration"), f"{run_id}.review.media.video_duration")
+                if duration is not None:
+                    if duration <= 0:
+                        raise MetricsError("Verified accepted media duration must be positive")
+                    reported = values["video_seconds"]
+                    if reported is not None and not math.isclose(reported, duration, rel_tol=0, abs_tol=0.001):
+                        raise MetricsError(f"{run_id}: video_seconds conflicts with verified review media duration")
+                    values["video_seconds"] = duration
+                    origins["video_seconds"] = "verified_review"
         rows.append({
             "run_id": run_id, "values": values, "origins": origins, "cost": cost,
             "cohort": cohort, "settings": settings, "profile": profile,
