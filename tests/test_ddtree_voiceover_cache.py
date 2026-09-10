@@ -60,13 +60,8 @@ def test_services_use_explicit_path_cache_across_unique_run_media(
         assert services[0].cache_dir == services[1].cache_dir
 
 
-def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
-    timeline_probe, monkeypatch, tmp_path,
-):
-    Probe, legacy_timeline = timeline_probe
-    cache = tmp_path / "persistent-cache" / "external-gtts"
-    monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(cache))
-    monkeypatch.setenv("MANIM_TTS_PROVIDER", "external-gtts")
+@pytest.fixture
+def offline_external_gtts(monkeypatch):
     synthesized = []
 
     class OfflineGTTS:
@@ -88,6 +83,21 @@ def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
     mp3_module.MP3 = read_offline_mp3
     monkeypatch.setitem(sys.modules, "gtts", gtts_module)
     monkeypatch.setitem(sys.modules, "mutagen.mp3", mp3_module)
+    return synthesized
+
+
+def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
+    timeline_probe, offline_external_gtts, monkeypatch, tmp_path,
+):
+    Probe, legacy_timeline = timeline_probe
+    cache = tmp_path / "persistent-cache" / "external-gtts"
+    monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(cache))
+    monkeypatch.setenv("MANIM_TTS_PROVIDER", "external-gtts")
+    attachments = []
+    monkeypatch.setattr(
+        Probe, "add_sound",
+        lambda self, filename, time_offset=0: attachments.append((filename, time_offset)),
+    )
     audio_paths = []
     for run in ("first", "second"):
         monkeypatch.setenv("MANIM_RUN_ID", run)
@@ -112,8 +122,54 @@ def test_external_gtts_reuses_cache_and_writes_manifest_in_explicit_directory(
         assert json.loads(output.read_text(encoding="utf-8"))["run_id"] == run
         audio_paths.append(audio_path)
     assert audio_paths[0] == audio_paths[1]
-    assert synthesized == ["The target emits one token."]
+    assert attachments == [(str(path), 0) for path in audio_paths]
+    assert offline_external_gtts == ["The target emits one token."]
     assert not legacy_timeline.exists()
+
+
+@pytest.mark.parametrize("managed", [False, True])
+def test_managed_external_audio_is_attached_once_at_block_start(
+    timeline_probe, offline_external_gtts, managed, monkeypatch, tmp_path,
+):
+    Probe, _ = timeline_probe
+    monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(tmp_path / "external-cache"))
+    monkeypatch.setenv("MANIM_TTS_PROVIDER", "external-gtts")
+    if managed:
+        monkeypatch.setenv("MANIM_RUN_ID", "audio-run")
+        monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / "audio-run.json"))
+    attachments = []
+
+    def add_sound(self, filename, time_offset=0, **kwargs):
+        attachments.append({
+            "file": filename, "called_at": self.time, "offset": time_offset,
+        })
+
+    def opening(self):
+        self.wait(0.35)
+        with self.narrate("The target emits one token."):
+            assert len(attachments) == int(managed)
+            self.wait(0.1)
+
+    monkeypatch.setattr(Probe, "add_sound", add_sound)
+    monkeypatch.setattr(Probe, "opening", opening)
+    scene = Probe()
+    scene.render()
+    assert len(scene._external_tracks) == 1
+    track = scene._external_tracks[0]
+    assert track["start"] > 0
+    assert offline_external_gtts == ["The target emits one token."]
+    if managed:
+        assert attachments == [{
+            "file": track["file"],
+            "called_at": pytest.approx(track["start"]),
+            "offset": 0,
+        }]
+    else:
+        assert attachments == []
+        manifest = json.loads(
+            (scene._external_dir / "manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest["tracks"] == scene._external_tracks
 
 
 def test_silent_setup_does_not_create_an_unused_cache(

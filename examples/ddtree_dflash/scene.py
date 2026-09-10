@@ -183,6 +183,9 @@ class DDTreeDFlashExplainer(VoiceoverScene):
         The nested ``with self.voiceover(...)`` still runs its own cleanup
         (including its synchronization wait) via the normal context-manager
         protocol before our ``finally`` observes ``self.time``.
+
+        Managed external-gTTS runs embed audio immediately. Direct legacy
+        renders retain their separate post-mux manifest workflow.
         """
         index = len(self._review_blocks)
         start = self.time
@@ -201,6 +204,8 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                 duration = MP3(audio_path).info.length
                 track_start = start
                 tracker = SimpleNamespace(duration=duration)
+                if self._review_run_id:
+                    self.add_sound(str(audio_path), time_offset=0)
                 yield tracker
                 remaining = duration - (self.time - track_start)
                 if remaining > 0:
