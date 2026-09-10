@@ -11,6 +11,10 @@ and writes RECORD_STEM.accepted.json by default, retaining hashes and references
 both the technical review and attributed human evidence. verify rechecks all
 retained evidence. No command modifies the manifest. No automated check approves perceptual
 quality or comprehension. All paths in generated records are absolute.
+
+Optional teaching validation must be a run/timeline/contract-hash-bound artifact
+from validate_teaching.py --timeline TIMELINE --output VALIDATION, not its raw
+--json report. The human evidence must also name teaching_contract_sha256.
 """
 
 from __future__ import annotations
