@@ -179,8 +179,15 @@ rendered times to teaching beats and transitions. The wrapper preflights direct
 
 ## Direct Manim: minimal escape hatch
 
-The minimal example currently has a legacy narrator without a managed review
-timeline. Keep using direct Manim for it:
+The minimal example also supports the managed workflow through `NarratedScene`,
+including beat IDs and actual visual-event timestamps:
+
+```powershell
+.\scripts\render.ps1 examples\minimal\scene.py MinimalExplainer `
+  --profile draft --provider none --output-dir media\runs --run-id minimal-draft-01
+```
+
+For a direct render without a managed run manifest, use Manim itself:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "none"
