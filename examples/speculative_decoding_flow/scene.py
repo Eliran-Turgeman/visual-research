@@ -1,4 +1,4 @@
-"""A model-and-token flow diagram of speculative decoding."""
+"""A model-and-token flow diagram of block-parallel speculative decoding."""
 
 from pathlib import Path
 
@@ -44,7 +44,7 @@ from manim_lib import (
 
 
 class SpeculativeDecodingFlow(NarratedScene):
-    """Show how speculative decoding converts serial waits into one batch."""
+    """Show block-parallel proposals followed by one target verification pass."""
 
     review_timeline_path = Path("media/review/speculative_decoding_flow/timeline.json")
     external_voiceover_subdir = "speculative_decoding_flow_external"
@@ -82,7 +82,7 @@ class SpeculativeDecodingFlow(NarratedScene):
 
     def construct(self):
         eyebrow = Text(
-            "SPECULATIVE DECODING",
+            "BLOCK SPECULATIVE DECODING",
             font_size=15,
             color=PRIMARY.light,
             weight="SEMIBOLD",
@@ -169,11 +169,12 @@ class SpeculativeDecodingFlow(NarratedScene):
                 )
 
         with self.narrate(
-            "Speculation changes the rhythm. A small draft model proposes "
-            "several likely tokens at once."
+            "This example uses block drafting: a small model predicts several "
+            "tokens in parallel. Standard autoregressive drafting would "
+            "propose them sequentially."
         ) as tracker:
             draft = self._model(
-                "Draft model", "fast · approximate", PRIMARY.base
+                "Block drafter", "parallel · approximate", PRIMARY.base
             ).move_to((-2.1, 0.65, 0))
             target_compact = target.copy().move_to((2.15, 0.65, 0))
             bridge = Arrow(
@@ -185,7 +186,7 @@ class SpeculativeDecodingFlow(NarratedScene):
                 max_tip_length_to_length_ratio=0.16,
             )
             new_label = Text(
-                "propose in parallel",
+                "block proposal in parallel",
                 font_size=TYPOGRAPHY.caption.font_size,
                 color=PRIMARY.light,
             ).move_to(baseline_label)
@@ -224,8 +225,8 @@ class SpeculativeDecodingFlow(NarratedScene):
         )
 
         with self.narrate(
-            "Can, reason, and fast arrive together. The visual structure now "
-            "matches the computation: one parallel proposal."
+            "Can, reason, and fast come from one block-drafting pass. "
+            "The three proposals then go to the target together."
         ) as tracker:
             self.paced(
                 tracker,
@@ -266,8 +267,8 @@ class SpeculativeDecodingFlow(NarratedScene):
         ]
 
         with self.narrate(
-            "The target verifies the whole batch in one pass. Same target "
-            "model. Fewer serial waits."
+            "The target verifies the whole batch in one pass. In this "
+            "all-accepted example, all three proposals match its choices."
         ) as tracker:
             self.paced(
                 tracker,
@@ -289,15 +290,18 @@ class SpeculativeDecodingFlow(NarratedScene):
             )
 
         footer = Text(
-            "3 serial waits  →  1 batched verification",
+            "3 target calls  →  1 verification call",
             font_size=24,
             color=TEXT_PRIMARY,
+            t2c={
+                "3 target calls": TEXT_MUTED,
+                "1 verification call": SUCCESS.light,
+            },
         ).move_to((0, -2.55, 0))
-        footer[0:14].set_color(TEXT_MUTED)
-        footer[-22:].set_color(SUCCESS.light)
 
         with self.narrate(
-            "The speedup comes from changing the shape of the work."
+            "Drafting still takes time. This is a reduction in target calls, "
+            "not a guaranteed latency reduction."
         ) as tracker:
             self.paced(
                 tracker,

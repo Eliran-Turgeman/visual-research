@@ -11,6 +11,8 @@ moves probability mass from a distribution entry into another semantic object
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from manim import (
     DOWN,
@@ -41,6 +43,12 @@ class DistributionEntry(VGroup):
 
     Exposes :attr:`token_anchor`, :attr:`value_anchor`, and
     :attr:`highlight_anchor` for connecting continuity animations.
+
+    Bar width is exactly ``track.width * value``, with no minimum width or
+    outline that could imply extra mass. Zero collapses the fill to the track's
+    left edge; subpixel positives remain distinguishable by their numeric label.
+    Labels use two decimals except when rounding would hide a positive value
+    or imply certainty. Use :meth:`set_value` to update existing objects.
     """
 
     def __init__(
@@ -55,43 +63,81 @@ class DistributionEntry(VGroup):
         bar_color: str = PRIMARY.base,
     ) -> None:
         super().__init__()
-        if not 0 <= value <= 1:
-            raise ValueError("distribution values must be between 0 and 1")
+        self._validate_value(value)
+        if any(
+            not math.isfinite(dimension) or dimension <= 0
+            for dimension in (max_bar_width, bar_height)
+        ):
+            raise ValueError("bar dimensions must be positive and finite")
         self.key = key
         self.token_text = token
         self.value = value
+        self._bar_height = bar_height
+        self._value_font_size = max(font_size - 2, 12)
 
         self.token_label = Text(token, font_size=font_size, color=TEXT_PRIMARY)
-        bar_width = max(max_bar_width * value, 0.05)
         self.track = RoundedRectangle(
             width=max_bar_width,
             height=bar_height,
-            corner_radius=min(0.08, bar_height * 0.35),
+            corner_radius=min(0.08, bar_height * 0.35, max_bar_width * 0.5),
             fill_color=SURFACE,
             fill_opacity=0.95,
             stroke_color=NEUTRAL.dim,
             stroke_width=STROKES.hairline.width,
         )
-        self.bar = RoundedRectangle(
-            width=bar_width,
-            height=bar_height,
-            corner_radius=min(0.08, bar_height * 0.35),
-            fill_color=bar_color,
-            fill_opacity=0.78,
-            stroke_color=PRIMARY.light if bar_color == PRIMARY.base else bar_color,
-            stroke_width=STROKES.hairline.width,
+        self.bar = self.track.copy().set_fill(bar_color, opacity=0.78).set_stroke(
+            width=0,
         )
         self.value_label = Text(
-            f"{value:.2f}",
-            font_size=max(font_size - 2, 12),
+            self._format_value(value),
+            font_size=self._value_font_size,
             color=TEXT_SECONDARY,
         )
 
         self.track.next_to(self.token_label, RIGHT, buff=SPACING.sm)
         self.bar.move_to(self.track).align_to(self.track, LEFT)
+        self.bar.stretch(value, 0, about_point=self.track.get_left())
         self.value_label.next_to(self.track, RIGHT, buff=SPACING.xs)
 
         self.add(self.token_label, self.track, self.bar, self.value_label)
+
+    @staticmethod
+    def _validate_value(value: float) -> None:
+        if not math.isfinite(value) or not 0 <= value <= 1:
+            raise ValueError("distribution values must be finite and between 0 and 1")
+
+    @staticmethod
+    def _format_value(value: float) -> str:
+        rounded = f"{value:.2f}"
+        if value > 0 and rounded == "0.00":
+            return f"{value:.2g}"
+        if value < 1 and rounded == "1.00":
+            return str(value)
+        return rounded
+
+    def set_value(self, value: float) -> "DistributionEntry":
+        """Update mass and its label in place, also via ``entry.animate.set_value``.
+
+        Entry, bar, track, and label identities are retained. The current
+        horizontal track supplies the scale and baseline, so updates work after
+        translating or uniformly scaling the distribution, including zero to
+        positive transitions. Token and value-column positions stay fixed.
+        """
+        self._validate_value(value)
+        text = self._format_value(value)
+        # Text's container color need not match its visible glyphs.
+        glyph = self.value_label[0]
+        label = Text(
+            text, font_size=self._value_font_size, color=glyph.get_color()
+        ).set_opacity(glyph.get_fill_opacity()).scale(self.track.height / self._bar_height)
+        label.move_to(self.value_label, aligned_edge=LEFT)
+        self.bar.set_points(self.track.points.copy())
+        self.bar.stretch(value, 0, about_point=self.track.get_left())
+        self.bar.set_stroke(width=0)
+        self.value_label.become(label)
+        self.value_label.text = text
+        self.value = value
+        return self
 
     @property
     def token_anchor(self) -> np.ndarray:
@@ -124,7 +170,12 @@ class ProbabilityDistribution(VGroup):
     Parameters
     ----------
     entries : dict[str, tuple[str, float]]
-        Mapping of ``{key: (token_display, probability)}``.
+        Mapping of ``{key: (token_display, probability)}``. Each value must be
+        finite and in [0, 1]. Values are independent: subsets need not sum to
+        one, and no normalization or total-mass constraint is imposed.
+
+    Token labels are left-aligned; all tracks share a common left baseline,
+    and numeric labels share a separate column regardless of label widths.
     """
 
     def __init__(
@@ -157,6 +208,12 @@ class ProbabilityDistribution(VGroup):
             self.entries[key] = entry
             self.add(entry)
         self.arrange(DOWN, buff=entry_buff, aligned_edge=LEFT)
+        baseline = max(entry.track.get_left()[0] for entry in self.entries.values())
+        for entry in self.entries.values():
+            VGroup(entry.track, entry.bar, entry.value_label).shift(
+                RIGHT * (baseline - entry.track.get_left()[0])
+            )
+        self.center()
 
     def highlight_entry(
         self, key: str, color: str = ACCENT.base

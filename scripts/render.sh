@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 SCENE_FILE SCENE_NAME" >&2
-  exit 2
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="${MANIM_PYTHON:-python}"
+if [[ -z "${MANIM_PYTHON:-}" && -x "$SCRIPT_DIR/../.venv/bin/python" ]]; then
+  PYTHON="$SCRIPT_DIR/../.venv/bin/python"
 fi
-
-QUALITY="${MANIM_QUALITY:--qh}"
-python -m manim "$QUALITY" "$1" "$2"
+exec "$PYTHON" "$SCRIPT_DIR/render.py" "$@"
