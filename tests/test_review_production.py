@@ -14,6 +14,7 @@ from manim_lib.review import (
 )
 from scripts.extract_narration_frames import extract_review
 from scripts.review_production import main
+from scripts.validate_teaching import main as validate_teaching_main
 
 
 @pytest.fixture(scope="module")
@@ -326,20 +327,72 @@ def test_cli_acceptance_does_not_write_without_explicit_evidence(manifest, tmp_p
     assert record.read_bytes() == before
 
 
-def test_teaching_artifact_binding_without_teaching_module(manifest, tmp_path):
-    record, evidence = prepared_review(manifest, tmp_path)
-    contract = tmp_path / "teaching.json"
-    validation = tmp_path / "teaching-validation.json"
-    write_json(contract, {"title": "Tiny contract fixture"})
-    write_json(validation, {"schema_version": 1, "status": "passed",
-                            "contract": artifact_reference(contract), "run_id": "review-test",
-                            "timeline": read_json(record)["artifacts"]["timeline"],
-                            "validation": {"valid": True, "errors": []}})
-    human = read_json(evidence)
+def teaching_contract(timeline):
+    block = timeline["blocks"][0]
+    return {
+        "schema_version": 1, "episode": "probability-fixture", "audience": "Engineers",
+        "prerequisites": ["Understand fractions."],
+        "objective": "Represent one quarter with one quarter of a bar.",
+        "scope": "One toy probability.", "assumptions": ["A bar represents unit mass."], "unknowns": [],
+        "sources": [{"id": "toy", "kind": "toy", "ref": "fixture", "revision": "v1",
+                     "inspection": "inspected"}],
+        "claims": [{"id": "quarter", "kind": "toy", "status": "mapped",
+                    "statement": "A probability of 0.25 occupies a quarter of a bar.",
+                    "evidence": [{"source": "toy", "locator": "quarter", "support": "Defined toy fraction."}]}],
+        "worked_examples": [{
+            "id": "fill", "description": "Compute the required bar fill.", "provenance": "toy",
+            "source_refs": ["toy"], "checks": [{
+                "kind": "probability_graphic", "input": {"probability": "0.25", "fill_fraction": "0.25"},
+                "expected": {"fill_fraction": "0.25"},
+            }],
+        }],
+        "timeline_mapping": "complete",
+        "beats": [{
+            "id": "example", "purpose": "Show the quarter fill.", "claim_ids": ["quarter"],
+            "example_ids": ["fill"], "narration": {
+                "index": 0, "text": block["text"], "source": "toy", "locator": "quarter",
+            },
+        }],
+        "transfer_questions": [{
+            "id": "half", "question": "How much fill represents probability 0.5?",
+            "expected_answer": "Half of the bar.", "justification": "The full bar represents unit mass.",
+            "claim_ids": ["quarter"], "example_ids": ["fill"],
+        }],
+    }
+
+
+def attach_teaching(record_path, evidence_path, tmp_path):
+    record = read_json(record_path)
+    contract, validation = tmp_path / "teaching.json", tmp_path / "teaching-validation.json"
+    timeline_path = Path(record["artifacts"]["timeline"]["path"])
+    write_json(contract, teaching_contract(read_json(timeline_path)))
+    write_json(validation, {
+        "schema_version": 1, "status": "passed", "run_id": record["run_id"],
+        "contract": artifact_reference(contract), "timeline": record["artifacts"]["timeline"],
+        "validation": {"valid": True, "errors": []},
+    })
+    human = read_json(evidence_path)
     human["teaching_contract_sha256"] = sha256_file(contract)
-    write_json(evidence, human)
+    write_json(evidence_path, human)
+    return contract, validation
+
+
+def test_teaching_artifact_binding_recomputes_and_preserves_omissions(manifest, tmp_path):
+    record, evidence = prepared_review(manifest, tmp_path)
+    contract, validation = attach_teaching(record, evidence, tmp_path)
+    original_validation = validation.read_bytes()
     result = accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
     assert result["teaching"]["contract"] == artifact_reference(contract)
+    recomputed = result["teaching"]["recomputed_validation"]
+    assert recomputed["valid"] is True
+    assert recomputed["checks"] and all(check["passed"] for check in recomputed["checks"])
+    assert recomputed["evidence"]["source_content"] == "not_checked"
+    assert recomputed["evidence"]["human_comprehension"] == "not_assessed"
+    assert recomputed["evidence"]["audiovisual_fidelity"] == "not_assessed"
+    assert {"source_content", "visual_event_comparison"} <= {
+        omitted["check"] for omitted in recomputed["omitted_checks"]
+    }
+    assert validation.read_bytes() == original_validation
     accepted = tmp_path / "accepted.json"
     write_json(accepted, result)
     assert verify_acceptance(manifest, accepted) == result
@@ -348,13 +401,87 @@ def test_teaching_artifact_binding_without_teaching_module(manifest, tmp_path):
         accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
 
 
+@pytest.mark.parametrize("defect,code", [
+    ("worked_example", "semantic_check"), ("beat_mapping", "narration_drift"), ("shape", "shape"),
+])
+@pytest.mark.parametrize("operation", ["accept", "verify"])
+def test_forged_success_report_cannot_bypass_semantic_recomputation(manifest, tmp_path, defect, code, operation):
+    record, evidence = prepared_review(manifest, tmp_path)
+    contract, validation = attach_teaching(record, evidence, tmp_path)
+    accepted = accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
+    document = read_json(contract)
+    if defect == "worked_example":
+        document["worked_examples"][0]["checks"][0]["expected"]["fill_fraction"] = "0.75"
+    elif defect == "beat_mapping":
+        document["beats"][0]["narration"]["text"] = "Contradicts the actual recorded narration."
+    else:
+        document["objective"] = ""
+    write_json(contract, document)
+    envelope = read_json(validation)
+    envelope["contract"] = artifact_reference(contract)
+    envelope["validation"] = {"valid": True, "errors": []}
+    write_json(validation, envelope)
+    human = read_json(evidence)
+    human["teaching_contract_sha256"] = sha256_file(contract)
+    write_json(evidence, human)
+    if operation == "accept":
+        with pytest.raises(ReviewError, match=code):
+            accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
+    else:
+        accepted["teaching"]["contract"] = artifact_reference(contract)
+        accepted["teaching"]["validation"] = artifact_reference(validation)
+        accepted["human_review"] = human
+        accepted["human_evidence"] = artifact_reference(evidence)
+        accepted_path = tmp_path / "accepted.json"
+        write_json(accepted_path, accepted)
+        with pytest.raises(ReviewError, match=code):
+            verify_acceptance(manifest, accepted_path)
+
+
+def test_real_episode_contract_and_cli_envelope_pass_semantic_acceptance(manifest, tmp_path):
+    contract = Path(__file__).resolve().parents[1] / "examples" / "speculative_decoding_timeline" / "teaching.json"
+    document = read_json(contract)
+    data = read_json(manifest)
+    timeline_path = Path(data["artifacts"]["timeline"]["path"])
+    count = len(document["beats"])
+    write_json(timeline_path, {
+        "schema_version": 1, "run_id": data["run_id"], "scene_duration": 1,
+        "blocks": [{
+            "index": i, "start": i / count, "end": (i + 1) / count, "duration": 1 / count,
+            "text": beat["narration"]["text"], "beat_id": beat["id"],
+        } for i, beat in enumerate(document["beats"])],
+        "events": [],
+    })
+    data["artifacts"]["timeline"] = artifact_reference(timeline_path)
+    write_json(manifest, data)
+    record, evidence = prepared_review(manifest, tmp_path)
+    validation = tmp_path / "validation.json"
+    assert validate_teaching_main([str(contract), "--timeline", str(timeline_path),
+                                  "--output", str(validation), "--json"]) == 0
+    human = read_json(evidence)
+    human["teaching_contract_sha256"] = sha256_file(contract)
+    write_json(evidence, human)
+    accepted = accept_production(manifest, record, evidence, teaching_contract=contract, teaching_validation=validation)
+    report = accepted["teaching"]["recomputed_validation"]
+    assert report == read_json(validation)["validation"]
+    assert report["checks"][0]["actual"]["speculative_end"] == "1.6"
+    assert any(issue["code"] == "duration_review" for issue in report["warnings"])
+    accepted_path = tmp_path / "accepted.json"
+    write_json(accepted_path, accepted)
+    assert verify_acceptance(manifest, accepted_path) == accepted
+
+
 @pytest.fixture
 def teaching_binding(tmp_path):
     contract, timeline, validation = (
         tmp_path / "contract.json", tmp_path / "timeline.json", tmp_path / "validation.json",
     )
-    write_json(contract, {"fixture": "teaching"})
-    write_json(timeline, {"run_id": "bound-run", "scene_duration": 1})
+    timeline_document = {
+        "run_id": "bound-run", "scene_duration": 1,
+        "blocks": [{"index": 0, "start": 0, "end": 1, "duration": 1, "text": "A quarter.", "beat_id": "example"}],
+    }
+    write_json(contract, teaching_contract(timeline_document))
+    write_json(timeline, timeline_document)
     record = {"run_id": "bound-run", "artifacts": {"timeline": artifact_reference(timeline)}}
     evidence = {"teaching_contract_sha256": sha256_file(contract)}
     envelope = {

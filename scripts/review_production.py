@@ -15,6 +15,11 @@ quality or comprehension. All paths in generated records are absolute.
 Optional teaching validation must be a run/timeline/contract-hash-bound artifact
 from validate_teaching.py --timeline TIMELINE --output VALIDATION, not its raw
 --json report. The human evidence must also name teaching_contract_sha256.
+accept and verify rerun the pure teaching validator on the bound contract and
+actual manifest timeline; a hand-authored success report is not semantic proof.
+The accepted record retains teaching.recomputed_validation including warnings
+and omitted checks. Source content is not fetched or independently inspected;
+unperformed source/event checks and human judgments remain explicitly unassessed.
 """
 
 from __future__ import annotations
