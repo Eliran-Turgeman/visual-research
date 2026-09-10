@@ -170,6 +170,14 @@ insufficient. The acceptance action preserves `review.json` and refuses to
 overwrite an existing accepted output.
 If `--output` is omitted, its default is `RECORD_STEM.accepted.json`.
 
+Both `accept` and `verify` independently rerun `teaching.validate_contract`
+against the actual bound contract and timeline. Semantic, beat, or shape errors
+are rejected even if a supplied envelope claims `valid: true`. The accepted
+record retains the result under `teaching.recomputed_validation`, including
+source/event omissions. Recomputing deterministic checks does not establish
+source entailment, perceptual fidelity, or human comprehension; those evidence
+limits and explicit review requirements remain.
+
 Keep the accepted record, original technical review, human evidence, teaching
 files when supplied, video, timeline, index, and JPEGs. `verify` rechecks their
 bindings, frame coverage, actual media decoding/durations, and declared human

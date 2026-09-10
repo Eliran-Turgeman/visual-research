@@ -88,14 +88,48 @@ an allowlist of non-secret settings.
 
 ## Cache reuse and recovery
 
-Legacy speech assets normally live under `media\voiceovers\`; managed renders
-retain run-specific audio paths under their output directory. Follow the
-actual run artifacts rather than assuming the legacy default cache path.
-Preserve audio **and**
-its provider metadata; copying filenames without the matching configuration
+Managed rendering separates a **persistent provider cache** from **run-specific
+audio snapshots**. Cache-root precedence is:
+
+1. `--cache-dir CACHE_ROOT` (`-CacheDir` in the DDTree convenience wrapper).
+2. `MANIM_TTS_CACHE_ROOT`.
+3. The repository/worktree's `media\voiceovers` directory.
+
+The effective cache is always `CACHE_ROOT\PROVIDER`, for example
+`media\voiceovers\openrouter`. It is independent of the run ID and output/media
+directory. Providers do not share a metadata JSON file. Default roots are
+worktree-local; supply the same explicit root to reuse valid speech across
+worktrees.
+
+```powershell
+.\scripts\render.ps1 examples\minimal\scene.py MinimalExplainer `
+  --profile production --provider openrouter --cache-dir media\voiceovers `
+  --output-dir media\runs --run-id minimal-cached-production-01
+```
+
+This example requires configured credentials and authorization for any missing
+speech; a cache setting is not a promise that the run makes no paid requests.
+Repeat with a fresh run ID and the same cache/configuration to reuse valid
+unchanged clips. Preserve audio **and** its provider metadata; copying
+filenames without the matching configuration
 does not establish a valid cache hit. An unchanged text/configuration can be
 reused; changing pronunciation, model, voice, speed, or style may require new
 speech and a new timing review.
+
+For scene implementations, `MANIM_TTS_CACHE_DIR` is the resolved provider cache
+passed to speech services; `MANIM_VOICEOVER_DIR` is the unique run's `audio`
+directory, **not** the reusable cache. `NarratedScene.add_sound` snapshots
+consumed bytes by SHA-256 before Manim reads them. Later corruption or mutation
+of the shared cache cannot alter those retained snapshots.
+
+`manifest.cache` records provider/path. Optional
+`timeline.blocks[].audio` and `manifest.artifacts.audio` are **lists** of
+actual `{path, sha256}` references, not one path object or fabricated empty
+measurements. References identify files inside the run's `audio` directory;
+the renderer checks their location and hashes. Retain those snapshots with the
+run even if the shared cache is subsequently repaired or removed. Managed
+external-gTTS also uses the shared synthesis cache, but keeps its track manifest
+and copied audio in the run and already embeds the speech in the video.
 
 OpenRouter validates complete MP3 decoding, byte size, and SHA-256 fingerprints
 before reuse. Valid unchanged assets cause no new provider request. Missing or
@@ -109,14 +143,17 @@ discarding unrelated entries.
 The persistent `.openrouter-cache.lock` serializes cooperating OpenRouter
 writers. Do not delete the lock file to force progress while another process
 may hold it. Other upstream speech services do not honor this lock; use
-separate cache directories for concurrent legacy-provider work. No new cache
+separate **worker cache roots** (`--cache-dir` or `MANIM_TTS_CACHE_ROOT`) for
+concurrent legacy-provider work that does not cooperate with the lock.
+Provider subdirectories isolate different providers, not concurrent writers
+using the same legacy service. No new cache
 management CLI is required: the normal service call validates/reuses/recovers
 the assets. Missing credentials and provider/auth/quota/stream failures remain
 visible rather than silently producing an accepted fallback.
 
-For the full DDTree episode, its [narration instructions](../../../examples/ddtree_full/README.md#reproducible-speech-assets)
-describe independent pre-caching and the episode narration manifest. Avoid
-regenerating all narration merely to repair one visual collision.
+For the full DDTree episode, follow its [narration instructions](../../../examples/ddtree_full/README.md#reproducible-speech-assets)
+and distinguish standalone legacy assets from the managed provider cache.
+Avoid regenerating all narration merely to repair one visual collision.
 
 On failure:
 
