@@ -209,14 +209,15 @@ def _compute(kind, data):
         raise ValueError("Target decisions must cover the walk through its first miss")
     if kind == "serial_cost":
         count = _integer(data["token_count"], minimum=1)
+        draft_steps = _integer(data.get("draft_steps", count), minimum=1)
         costs = [_number(data[name]) for name in ("target_pass", "draft_step", "verification")]
         if any(value <= 0 for value in costs):
             raise ValueError("Illustrative work durations must be positive")
         target, draft, verification = costs
         return {
             "baseline_end": count * target,
-            "draft_end": count * draft,
-            "speculative_end": count * draft + verification,
+            "draft_end": draft_steps * draft,
+            "speculative_end": draft_steps * draft + verification,
         }
     if kind == "rounded_product":
         if not isinstance(data["factors"], list) or not data["factors"]:
@@ -270,6 +271,8 @@ def evaluate_check(check: Mapping[str, Any]) -> dict:
     Ties in exhaustive prefix enumeration use shorter paths then lexical tokens;
     this is an oracle convention, not a claim about an implementation's tie order.
     Expected output must be complete, so an empty object cannot pass vacuously.
+    serial_cost defaults to one sequential draft step per token; explicit
+    draft_steps=1 models one block-draft pass, still followed by verification.
     """
     actual = None
     kind = check.get("kind") if isinstance(check, dict) else None
