@@ -132,13 +132,14 @@ def test_provider_options_without_live_services(scene, monkeypatch, tmp_path, pr
     monkeypatch.setitem(sys.modules, module_name, module)
     monkeypatch.setenv("MANIM_TTS_PROVIDER", provider)
     monkeypatch.setenv("MANIM_VOICEOVER_DIR", str(tmp_path / "audio"))
+    monkeypatch.setenv("MANIM_TTS_CACHE_DIR", str(tmp_path / "shared-cache" / provider))
     monkeypatch.setattr(scene, "set_speech_service", lambda service: None)
     if provider != "gtts":
         monkeypatch.setenv(f"{provider.upper()}_TTS_VOICE", "test-voice")
         monkeypatch.setenv(f"{provider.upper()}_TTS_SPEED", "1.1")
     scene.setup()
     assert scene._voiceover_enabled
-    assert options["cache_dir"] == tmp_path / "audio"
+    assert options["cache_dir"] == tmp_path / "shared-cache" / provider
     assert options["transcription_model"] is None
     if provider != "gtts":
         assert options["voice"] == "test-voice"
