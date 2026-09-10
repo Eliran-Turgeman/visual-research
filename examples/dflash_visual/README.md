@@ -73,7 +73,7 @@ establish distributional equivalence for nonzero-temperature sampling.
 ## Quick render (silent draft)
 
 ```powershell
-cd <repo-root>
+# From the repository root
 $env:MANIM_TTS_PROVIDER = "none"
 .\.venv\Scripts\python.exe -m manim -ql examples\dflash_visual\scene.py DFlashVisualExplainer
 ```
@@ -88,8 +88,9 @@ $env:MANIM_TTS_PROVIDER = "openrouter"
 
 ## Review narration timing
 
-Every render writes a provider-independent timeline to
-`media/review/dflash_visual/timeline.json`. Extract contact sheets:
+The direct-Manim commands write a provider-independent timeline to
+`media/review/dflash_visual/timeline.json`. Extract contact sheets into a new
+empty frames directory:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "none"
@@ -116,6 +117,34 @@ $env:MANIM_TTS_PROVIDER = "openrouter"
 
 Final output: `media\videos\scene\1080p60\DFlashVisualExplainer.mp4`
 (`-qh` is 1920×1080 at 60 fps; `-qk` would request 4K instead).
+
+## Managed production and acceptance
+
+The commands above remain the direct-Manim escape hatch. To retain a unique
+run manifest, matching timeline, and video, use the
+[managed workflow](../../README.md#render-a-managed-episode):
+
+```powershell
+.\scripts\render.ps1 examples\dflash_visual\scene.py DFlashVisualExplainer `
+  --profile draft --provider none --output-dir media\runs --run-id dflash-draft-01
+.\scripts\render.ps1 examples\dflash_visual\scene.py DFlashVisualExplainer `
+  --profile production --provider openrouter --quality=-qh `
+  --output-dir media\runs --run-id dflash-production-01
+```
+
+Configure the OpenRouter key in the process before the production command.
+Credentials alone do not select paid narration in wrappers. Use a fresh run
+ID each time; these runs preserve `manifest.json`, `timeline.json`, and
+`video.mp4` under `media\runs\<run-id>\` instead of the mutable legacy paths.
+Managed `external-gtts` embeds its own speech and does not require a separate
+mux step.
+
+The [review procedure](../../skills/technical-manim-explainer/references/production-review.md)
+requires transition frames, complete final audiovisual playback, explicit
+teaching review, and manifest/hash-bound acceptance. Use this episode's
+`teaching.json` when attaching contract validation. Neither the render nor
+complete beat mapping proves human understanding or extends this episode's
+greedy-only correctness scope.
 
 ## Storyboard
 

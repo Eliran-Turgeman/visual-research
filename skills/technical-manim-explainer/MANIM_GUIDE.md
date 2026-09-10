@@ -4,6 +4,11 @@ These are house conventions for technical explainers, not an API reference.
 Use semantic objects, stable layouts, and animations whose visual meaning
 matches the technical operation.
 
+For the stage-specific workflow, load the [teaching contract](references/teaching-contract.md)
+before storyboarding, [narration guidance](references/narration.md) before
+synthesis, and [production review](references/production-review.md) before
+acceptance. This guide covers implementation, not an autonomous agent framework.
+
 ## Object and animation semantics
 
 - Use `MathTex` for mathematics, `Tex` for LaTeX prose, and `Text` when LaTeX
@@ -102,11 +107,14 @@ Use `manim-voiceover` when the selected speech service is available. Keep each
 voiceover block to one semantic unit and place its corresponding animations
 inside that block. Use the block's duration to budget animation and pauses.
 
-For final narration, prefer the repository's OpenRouter service with
+Choose narration explicitly. For final narration, the repository's OpenRouter
+reference uses
 `microsoft/mai-voice-2` and `en-US-Harper:MAI-Voice-2`. Keep the voice near its
 default speed and use style controls sparingly; clear scripting and meaningful
-pauses matter more than exaggerated delivery. Use silent mode or gTTS only for
-draft timing.
+pauses matter more than exaggerated delivery. Audition difficult terms with the
+same supported provider/model/voice controls before full synthesis. Use silent
+mode for rough motion and explicit gTTS when useful for networked speech drafts.
+See the narration reference for cache recovery and AI-voice disclosure.
 
 Do not attach a 30-60 second paragraph to one block. Do not stretch a trivial
 fade for the duration of a long explanation. Instead, split the narration and
@@ -443,7 +451,7 @@ and redundant labels all fail this test.
 
 ---
 
-## Hard gates before calling a draft done
+## Hard gates for drafts and production
 
 These are non-negotiable checks, not suggestions. A scene fails review if any
 of them fail, regardless of how correct the underlying technical content is.
@@ -466,27 +474,13 @@ of them fail, regardless of how correct the underlying technical content is.
    states; check at least one frame near the beginning and one near the
    middle of each `with self.narrate(...)` block in addition to its end.
    This is a required step before calling a draft done, not an optional
-   nicety: any scene whose narration bookkeeping follows the
-   `DDTreeDFlashExplainer.narrate`/`_write_review_timeline` pattern (record
-   each block's actual rendered start/end and text, then write them to
-   `media/review/<scene>/timeline.json` after a successful `construct()`)
-   can be reviewed with the repository's general-purpose extraction script,
-   independent of which TTS provider (or the silent fallback) produced the
-   render:
-
-   ```powershell
-   .\.venv\Scripts\python.exe scripts\extract_narration_frames.py `
-     media\videos\scene\480p15\<Scene>.mp4 `
-     media\review\<scene>\timeline.json `
-     media\review\<scene>\frames
-   ```
-
-   It extracts near-start/mid/near-end JPEGs for every block (clamped inside
-   the block and the scene, never on an exact boundary), writes an
-   `index.json` mapping each frame back to its block's timestamp and
-   narration text, and assembles contact-sheet images for a quick full-render
-   skim. Run it against a silent `-ql` draft while iterating and again on the
-   final render before calling the explainer done.
+   nicety. Record actual rendered start/end timestamps and text, then use
+   the repository extraction workflow described in
+   [production review](references/production-review.md). Add first/final frames
+   and samples on both sides of major visual transitions; block sampling alone
+   can miss transient defects. Use the run manifest's matching video/timeline,
+   not files from different renders. Contact sheets and their timestamped index
+   support review; they do not automatically approve a scene.
 3. **Collision, overflow, and readability are checked, not eyeballed.** Before
    treating a layout as final, validate it with
    `manim_lib.layout` (`bounding_box`, `boxes_overlap`, `mobjects_overlap`,
@@ -498,17 +492,18 @@ of them fail, regardless of how correct the underlying technical content is.
    checked with `contains` rather than flagged as a collision), and confirm
    every on-screen group stays within the safe frame
    (`within_safe_frame`/`assert_within_safe_frame`). These are plain
-   functions over mobjects and bounding boxes; write a short throwaway
-   validation script per scene rather than trusting a render preview alone,
+   functions over mobjects and bounding boxes; add focused repeatable checks
+   for the scene rather than trusting a render preview alone,
    and use `bounding_box_overlay` to visualize a suspect region if a
    numeric check alone is hard to interpret. Prefer fixing the root cause
    (spacing, an auto-fit label, a configurable score direction) over shrinking
    text until it happens to fit.
-4. **Do a full final playback**, silent draft quality is enough, of the whole
-   scene end to end before considering it done. Spot checks catch most
-   problems, but only a full playback catches pacing drift, a leftover
-   mobject from an earlier section, or a transition that only breaks in
-   sequence.
+4. **Do full playback at both stages.** Watch the complete silent rough cut
+   for visual causality, then watch and listen to the complete final production
+   artifact after the last repair. A silent draft is not sufficient to approve
+   narrated production. Spot checks miss pacing drift, pronunciation, cutoffs,
+   leftover objects, and transitions that only break in sequence. If full
+   audiovisual review is unavailable, report it and leave acceptance pending.
 5. **The picture must explain, not merely announce.** Review the rough cut
    without audio or its headline. Identify what visibly causes the next state,
    which objects persist, and which geometric relationship delivers the
@@ -516,3 +511,9 @@ of them fail, regardless of how correct the underlying technical content is.
    comparison with mismatched scales or missing overhead, and a final insight
    that exists only in a caption. This is a perceptual review, not a property
    that passing geometry assertions alone can establish.
+6. **Bind acceptance to the reviewed artifact.** Use a bounded
+   review → repair → validate loop with timestamped findings, separate
+   technical/production/teaching criteria, and a review record linked to the
+   current manifest and hashes. Neither a successful render nor agent
+   confidence establishes acceptance; do not fabricate playback or learner
+   evidence.
