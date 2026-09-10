@@ -521,8 +521,8 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                 fraction=0.54,
             )
             formula_steps = EquationSteps(
-                r"Q(y_1,y_2,y_3) = q_1(y_1)",
-                r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)",
+                r"Q(y_1) = q_1(y_1)",
+                r"Q(y_1,y_2) = q_1(y_1)\,q_2(y_2)",
                 r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)\,q_3(y_3)",
                 font_size=30,
             )
