@@ -31,6 +31,9 @@ run ID is explicitly required; managed renders always require it. Managed scenes
 must use NarratedScene (or emit the same run-bound timeline protocol). For old
 scenes without a timeline, direct ``python -m manim -ql SCENE.py SceneName``
 remains available, outside this manifest workflow.
+Still-only public component scenes use direct Manim's ``-s`` path, for example
+``python -m manim -ql -s examples/visual_components/scene.py VisualComponents``;
+no narration blocks or managed timeline are required for that still-image draft.
 
 FFmpeg is resolved from PATH, then the existing imageio_ffmpeg distribution.
 PyAV (a Manim dependency) reads stream metadata; the resolved FFmpeg decodes the
