@@ -12,6 +12,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+
 
 def _load_module(name: str) -> ModuleType:
     # Offline accounting must not initialize Manim/voiceover or pollute JSON stdout.
@@ -21,7 +24,7 @@ def _load_module(name: str) -> ModuleType:
         if module is None:
             raise ImportError(f"{qualified} is unavailable")
         return module
-    path = Path(__file__).resolve().parents[1] / "manim_lib" / f"{name}.py"
+    path = _ROOT / "manim_lib" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(qualified, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load {qualified}")
@@ -82,7 +85,7 @@ def _bound_validator(
 ) -> ReviewValidator:
     """Load the review owner's validator only when explicit reviews are used."""
     try:
-        validate_acceptance = _load_module("review").validate_acceptance
+        verify_acceptance = _load_module("review").verify_acceptance
     except (ImportError, AttributeError, OSError) as exc:
         raise MetricsError(
             "Bound review validation is unavailable. Merge/install the artifact-review "
@@ -94,10 +97,17 @@ def _bound_validator(
         manifest_path, review_path = manifest_paths[run_id], review_paths[run_id]
         if load_record(manifest_path) != manifest or load_record(review_path) != review:
             raise MetricsError(f"{run_id}: input records changed during reporting")
-        result = validate_acceptance(manifest_path, review_path)
+        result = verify_acceptance(manifest_path, review_path)
+        if (
+            not isinstance(result, Mapping)
+            or result.get("status") != "accepted"
+            or result.get("run_id") != run_id
+            or result != review
+        ):
+            raise MetricsError(f"{run_id}: verifier did not return the bound accepted review")
         if load_record(manifest_path) != manifest or load_record(review_path) != review:
             raise MetricsError(f"{run_id}: input records changed during review validation")
-        return result
+        return True
 
     return validate
 
@@ -136,7 +146,7 @@ def main(
     )
     parser.add_argument("manifests", nargs="+", type=Path, help="Actual per-attempt manifest JSON paths")
     parser.add_argument("--accounting", type=Path, help="Optional supplied version-1 accounting JSON")
-    parser.add_argument("--review", action="append", type=Path, default=[], help="Explicit bound review JSON; repeat for each reviewed run")
+    parser.add_argument("--review", action="append", type=Path, default=[], help="Durable accepted review JSON, not a technical-only record; repeat per accepted run")
     parser.add_argument("--compare", action="store_true", help="Compare descriptive cohorts for one explicit matching task/episode; include sample sizes")
     parser.add_argument("--output", type=Path, help="Write JSON here instead of stdout (must not be an input)")
     args = parser.parse_args(argv)

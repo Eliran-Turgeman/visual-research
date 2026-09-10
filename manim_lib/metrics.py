@@ -42,7 +42,8 @@ Reviews are separate explicit review records indexed by ``run_id``. The trusted
 ``validate_review(manifest, review) -> bool`` adapter MUST verify explicit review
 evidence, current manifest/artifact hash bindings, and acceptance requirements.
 There is deliberately no default validator and no manifest acceptance flag.
-The CLI uses the repository's review validator rather than inventing approvals.
+The CLI accepts only durable accepted records and uses the repository's
+``verify_acceptance(manifest_path, accepted_path)`` rather than inventing approvals.
 
 Reports preserve unknowns as null. Partial nonnegative sums are marked
 ``lower_bound``; ratios with incomplete duration denominators remain unknown.

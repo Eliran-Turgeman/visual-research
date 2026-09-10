@@ -63,6 +63,7 @@ def identity(cohort="baseline", model="reported-model"):
 def review(record, *, accepted=True):
     return {
         "run_id": record["run_id"],
+        "status": "accepted" if accepted else "technically_verified",
         "decision": "accepted" if accepted else "rejected",
         "reviewer": "fixture-human",
         "artifact_sha256": record["artifacts"]["video"]["sha256"],
@@ -408,17 +409,38 @@ def test_bound_adapter_verifies_current_paths_and_detects_changed_inputs(tmp_pat
     adapter = ModuleType("manim_lib.review")
     calls = []
 
-    def validate_acceptance(manifest_file, review_file):
+    def verify_acceptance(manifest_file, review_file):
         calls.append((manifest_file, review_file))
-        return fixture_validator(cli.load_record(manifest_file), cli.load_record(review_file))
+        accepted = cli.load_record(review_file)
+        if not fixture_validator(cli.load_record(manifest_file), accepted):
+            raise MetricsError("Record is not accepted")
+        return accepted
 
-    adapter.validate_acceptance = validate_acceptance
+    adapter.verify_acceptance = verify_acceptance
     monkeypatch.setitem(sys.modules, "manim_lib.review", adapter)
     validate = cli._bound_validator({"run-1": manifest_path}, {"run-1": review_path})
     assert validate(record, evidence) is True
     assert calls == [(manifest_path, review_path)]
     write_json(tmp_path, "manifest.json", {**record, "status": "changed"})
     with pytest.raises(MetricsError, match="changed during reporting"):
+        validate(record, evidence)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [True, {}, {"status": "technically_verified", "run_id": "run-1"},
+     {"status": "accepted", "run_id": "wrong"}],
+)
+def test_bound_adapter_rejects_invalid_verifier_results(tmp_path, monkeypatch, result):
+    record = manifest()
+    evidence = review(record)
+    manifest_path = write_json(tmp_path, "manifest.json", record)
+    review_path = write_json(tmp_path, "review.json", evidence)
+    adapter = ModuleType("manim_lib.review")
+    adapter.verify_acceptance = lambda *_: result
+    monkeypatch.setitem(sys.modules, "manim_lib.review", adapter)
+    validate = cli._bound_validator({"run-1": manifest_path}, {"run-1": review_path})
+    with pytest.raises(MetricsError, match="did not return the bound accepted review"):
         validate(record, evidence)
 
 
