@@ -359,6 +359,33 @@ def test_cli_missing_modules_and_tools_produces_failed_json(tmp_path):
     assert not result.stderr
 
 
+@pytest.mark.parametrize("version", ((3, 10, 0), (3, 14, 0)))
+def test_cli_unsupported_python_is_failed_json_in_stdlib_isolation(version, tmp_path):
+    bootstrap = (
+        "import runpy, sys\n"
+        f"sys.version_info = {version!r}\n"
+        "def forbid_package_import(event, args):\n"
+        "    if event == 'import' and args[0].split('.')[0] == 'manim_lib':\n"
+        "        raise AssertionError('Doctor must not import eager package exports')\n"
+        "sys.addaudithook(forbid_package_import)\n"
+        "sys.argv = sys.argv[1:]\n"
+        "runpy.run_path(sys.argv[0], run_name='__main__')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", bootstrap, str(ROOT / "scripts" / "doctor.py"), "--json"],
+        cwd=tmp_path, env={**os.environ, "PATH": "", "PYTHONPATH": str(tmp_path)},
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 1, result.stderr
+    report = json.loads(result.stdout)
+    assert not report["ok"]
+    check = by_id(report)["python"]
+    assert check["status"] == "error"
+    assert "unsupported" in check["message"] and ">=3.11,<3.14" in check["message"]
+    assert check["remediation"]
+    assert not result.stderr
+
+
 @pytest.mark.parametrize("arguments", [
     ("--provider", "SECRET-unknown"), ("--scene",), ("--unknown-SECRET",),
 ])
@@ -394,7 +421,10 @@ def test_cli_native_import_failure_output_cannot_leak_secrets(failure, tmp_path)
 def test_cli_success_and_skipped_credentials_offline(tmp_path):
     for module in ("manim", "av", "manim_voiceover", "openai"):
         (tmp_path / f"{module}.py").write_text(
-            "import sys\nassert 'manim_lib' not in sys.modules\n", encoding="utf-8"
+            "import os, sys\nassert 'manim_lib' not in sys.modules\n"
+            "print('SECRET-successful-import', flush=True)\n"
+            "os.write(2, b'SECRET-native-stderr')\n",
+            encoding="utf-8",
         )
     # Emulate the bundled executable without requiring a platform-native test binary.
     (tmp_path / "imageio_ffmpeg.py").write_text(
@@ -410,6 +440,8 @@ def test_cli_success_and_skipped_credentials_offline(tmp_path):
     )
     result = cli(tmp_path, "--provider", "openrouter", "--skip-credentials", "--json")
     assert result.returncode == 0, result.stdout + result.stderr
+    assert not result.stderr
+    assert "SECRET" not in result.stdout
     report = json.loads(result.stdout)
     assert report["ok"]
     checks = by_id(report)
@@ -417,5 +449,6 @@ def test_cli_success_and_skipped_credentials_offline(tmp_path):
     assert checks["credential:OPENROUTER_API_KEY"]["status"] == "skipped"
     result = cli(tmp_path, "--provider", "openrouter", "--json")
     assert result.returncode == 1
+    assert "SECRET" not in result.stdout
     assert by_id(json.loads(result.stdout))["credential:OPENROUTER_API_KEY"]["status"] == "error"
     assert not result.stderr
