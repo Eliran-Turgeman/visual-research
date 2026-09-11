@@ -512,6 +512,7 @@ exit $LASTEXITCODE
             encoding="utf-8",
         )
         python.chmod(0o755)
+        forwarded[-1] = str(python)
         env = os.environ.copy()
         env["BOOTSTRAP_TEST_BIN"] = str(bin_dir)
         source = (
