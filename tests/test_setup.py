@@ -53,7 +53,7 @@ def make_venv(root, *, system_site=False):
 @pytest.fixture
 def installer(project, monkeypatch):
     calls = []
-    state = {"uv": True, "failure": None, "code": 19, "version": (3, 12, 4)}
+    state = {"uv": True, "failure": None, "code": 19, "version": (3, 12, 4), "pip": True}
 
     def which(name):
         if name == "uv" and state["uv"]:
@@ -66,8 +66,11 @@ def installer(project, monkeypatch):
             virtual = command[0] == str(bootstrap.venv_python(project / ".venv"))
             info = python_info(project, state["version"], virtual=virtual)
             return subprocess.CompletedProcess(command, 0, json.dumps(info), "")
+        if command[-1] == bootstrap.PIP_PROBE:
+            return subprocess.CompletedProcess(command, 0, "present" if state["pip"] else "missing", "")
         step = (
             "doctor" if str(project / "scripts" / "doctor.py") in command else
+            "ensurepip" if "ensurepip" in command else
             "install" if "sync" in command or "install" in command else "venv"
         )
         if step == state["failure"]:
@@ -189,6 +192,54 @@ def test_existing_environment_selector_conflict(project, installer, capsys):
     assert bootstrap.main(["--python", "3.13"]) == 1
     assert len(calls) == 1
     assert "conflicts with --python 3.13" in capsys.readouterr().err
+
+
+def test_switching_uv_to_pip_seeds_only_existing_local_environment(project, installer):
+    state, calls = installer
+    state["pip"] = False
+    assert bootstrap.main(["--installer", "uv"]) == 0
+    marker = project / ".venv" / "keep-me"
+    marker.write_text("user data", encoding="utf-8")
+    calls.clear()
+    assert bootstrap.main(["--installer", "pip"]) == 0
+    executed = commands(calls)
+    seed = [str(bootstrap.venv_python(project / ".venv")), "-I", "-m", "ensurepip", "--upgrade"]
+    assert seed in executed
+    assert not any("venv" in cmd or "installed-uv" in cmd for cmd in executed)
+    assert marker.read_text(encoding="utf-8") == "user data"
+    assert executed.index(seed) < next(i for i, cmd in enumerate(executed) if "install" in cmd)
+
+
+def test_existing_pip_is_not_reseeded_or_upgraded(project, installer):
+    _, calls = installer
+    make_venv(project)
+    assert bootstrap.main(["--installer", "pip"]) == 0
+    assert not any("ensurepip" in cmd for cmd in commands(calls))
+
+
+def test_missing_ensurepip_fails_without_install_or_doctor(project, installer, capsys):
+    state, calls = installer
+    state.update(pip=False, failure="ensurepip", code=29)
+    make_venv(project)
+    assert bootstrap.main(["--installer", "pip"]) == 29
+    executed = commands(calls)
+    assert not any("install" in cmd or str(project / "scripts" / "doctor.py") in cmd for cmd in executed)
+    assert "Manual prerequisites" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("stdout,returncode", [("", 17), ("invalid", 0)])
+def test_failed_pip_probe_does_not_seed_or_install(project, monkeypatch, stdout, returncode):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, returncode, stdout, "")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+    with pytest.raises(bootstrap.SetupError, match="Could not check pip") as result:
+        bootstrap.ensure_local_pip(str(bootstrap.venv_python(project / ".venv")), project, {})
+    assert result.value.returncode == (returncode or 1)
+    assert len(calls) == 1
 
 
 def test_matching_selector_reuses_venv_without_download(project, installer):

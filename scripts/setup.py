@@ -26,6 +26,10 @@ PYTHON_PROBE = (
     "'version':list(sys.version_info[:3]),"
     "'prefix':sys.prefix,'base_prefix':sys.base_prefix}))"
 )
+PIP_PROBE = (
+    "import importlib.util; "
+    "print('present' if importlib.util.find_spec('pip') is not None else 'missing')"
+)
 
 
 class SetupError(Exception):
@@ -243,6 +247,14 @@ def native_guidance() -> str:
     )
 
 
+def ensure_local_pip(python: str, root: Path, env: dict[str, str]) -> None:
+    result = run([python, "-I", "-c", PIP_PROBE], root, env, capture=True)
+    if result.returncode or result.stdout.strip() not in ("present", "missing"):
+        raise SetupError("Could not check pip in .venv; no installer was run.", result.returncode)
+    if result.stdout.strip() == "missing":
+        checked([python, "-I", "-m", "ensurepip", "--upgrade"], root, env)
+
+
 def setup(args: argparse.Namespace, root: Path) -> None:
     root = root.resolve()
     venv = root / ".venv"
@@ -290,7 +302,10 @@ def setup(args: argparse.Namespace, root: Path) -> None:
     else:
         if not existing:
             checked([python, "-I", "-m", "venv", str(venv)], root, env)
-        existing_python(venv, root, env)
+        local = existing_python(venv, root, env)
+        if local is None:
+            raise SetupError("venv creation did not produce a local environment; pip was not run.")
+        ensure_local_pip(local[0], root, env)
         requirement = str(root) + (f"[{','.join(extras)}]" if extras else "")
         checked(
             [str(venv_python(venv)), "-I", "-m", "pip", "install",
