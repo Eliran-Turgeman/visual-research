@@ -21,11 +21,9 @@ import uuid
 
 import pytest
 
+from manim_lib import teaching
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("teaching_under_test", ROOT / "manim_lib" / "teaching.py")
-teaching = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(teaching)
 CORPUS = teaching.load_contract(ROOT / "tests" / "fixtures" / "teaching" / "regressions.json")
 EPISODES = (
     "ddtree_full", "dflash_visual", "ddtree_visual", "ddtree_dflash",

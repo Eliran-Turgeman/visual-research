@@ -5,9 +5,11 @@ Usage: python scripts\\extract_narration_frames.py VIDEO TIMELINE OUTPUT_DIR
 Valid legacy timelines have scene_duration and ordered, zero-based blocks with
 index/start/end/text; omitted duration is inferred. Optional schema_version=1,
 run_id, events=[{time, label, beat_id?}], and block beat_id are preserved.
-All numbers must be finite. Duration arithmetic/scene overrun tolerance is 1 ms;
-ordering/overlap tolerance is 1 microsecond. Video duration must agree within
-max(100 ms, two frames). Input order is validated, never silently sorted.
+Structure and exact numeric boundaries follow manim_lib.timeline:
+duration arithmetic/block scene overrun tolerance is 1 ms; ordering/overlap
+tolerance is 1 microsecond, and events stay strictly in scene bounds.
+Video duration must agree within max(100 ms, two frames).
+Input order is validated, never silently sorted.
 
 The plan contains three samples per block plus the first/final usable frames
 and the frames before/after every block boundary and declared event. Additional
@@ -26,15 +28,19 @@ import json
 import math
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Re-export the historical parser/types/constants for existing script callers.
 from manim_lib.review import (
-    ReviewError, artifact_reference, probe_media, resolve_ffmpeg, sha256_file,
-    validate_video_timing, write_json,
+    ReviewError, TimelineValidationError, artifact_reference, probe_media,
+    resolve_ffmpeg, sha256_file, validate_timeline, validate_video_timing, write_json,
+)
+from manim_lib.timeline import (
+    Block, Event, Timeline, TimelineError, TIMELINE_TOLERANCE, ORDER_TOLERANCE,
+    finite_number,
 )
 
 FRAME_EPSILON = 0.02
@@ -42,38 +48,7 @@ MAX_BOUNDARY_OFFSET = 0.4
 BOUNDARY_OFFSET_FRACTION = 0.15
 PHASES = ("start", "mid", "end")
 MAX_ROWS_PER_CONTACT_SHEET = 8
-TIMELINE_TOLERANCE = 0.001
-ORDER_TOLERANCE = 1e-6
 MAX_REVIEW_FRAMES = 512
-
-
-@dataclass(frozen=True)
-class Block:
-    index: int
-    start: float
-    end: float
-    duration: float
-    text: str
-    beat_id: str | None = None
-
-
-@dataclass(frozen=True)
-class Event:
-    time: float
-    label: str
-    beat_id: str | None = None
-
-
-@dataclass(frozen=True)
-class Timeline:
-    scene_duration: float
-    blocks: tuple[Block, ...]
-    run_id: str | None = None
-    events: tuple[Event, ...] = ()
-
-
-class TimelineValidationError(ReviewError):
-    """The timeline does not describe a finite, ordered recorded scene."""
 
 
 def load_timeline(path: Path) -> dict:
@@ -88,83 +63,10 @@ def load_timeline(path: Path) -> dict:
 
 
 def _number(value: object, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TimelineValidationError(f"Timeline has non-numeric {field}.")
     try:
-        value = float(value)
-    except OverflowError as exc:
-        raise TimelineValidationError(f"{field} must be finite.") from exc
-    if not math.isfinite(value):
-        raise TimelineValidationError(f"{field} must be finite.")
-    return value
-
-
-def _optional_text(data: dict, key: str) -> str | None:
-    value = data.get(key)
-    if key in data and (not isinstance(value, str) or not value.strip()):
-        raise TimelineValidationError(f"'{key}' must be a nonblank string when present.")
-    return value
-
-
-def validate_timeline(data: object) -> Timeline:
-    if not isinstance(data, dict):
-        raise TimelineValidationError("Timeline root must be a JSON object.")
-    if "schema_version" in data and (type(data["schema_version"]) is not int or data["schema_version"] != 1):
-        raise TimelineValidationError("Timeline schema_version must be 1.")
-    scene_duration = _number(data.get("scene_duration"), "'scene_duration'")
-    if scene_duration <= 0:
-        raise TimelineValidationError("'scene_duration' must be positive.")
-    run_id = _optional_text(data, "run_id")
-    raw_blocks = data.get("blocks")
-    if not isinstance(raw_blocks, list) or not raw_blocks:
-        raise TimelineValidationError("Timeline must contain a non-empty 'blocks' list.")
-    blocks = []
-    seen_indices = set()
-    for position, raw in enumerate(raw_blocks):
-        if not isinstance(raw, dict):
-            raise TimelineValidationError(f"Block at position {position} must be a JSON object.")
-        index = raw.get("index")
-        if type(index) is not int:
-            raise TimelineValidationError(f"Block at position {position} has a non-integer 'index'.")
-        if index in seen_indices:
-            raise TimelineValidationError(f"Duplicate block index {index}.")
-        if index != position:
-            raise TimelineValidationError(f"Block index must be sequential from zero: expected {position}, got {index}.")
-        seen_indices.add(index)
-        start = _number(raw.get("start"), "'start'")
-        end = _number(raw.get("end"), "'end'")
-        if start < 0:
-            raise TimelineValidationError(f"Block {index} has a negative start.")
-        if end <= start:
-            raise TimelineValidationError(f"Block {index} has end at or before start.")
-        if end > scene_duration + TIMELINE_TOLERANCE:
-            raise TimelineValidationError(f"Block {index} ends after scene_duration.")
-        if blocks and start < blocks[-1].end - ORDER_TOLERANCE:
-            raise TimelineValidationError(f"Block {index} is out of order or overlaps the preceding block.")
-        duration = _number(raw.get("duration", end - start), "'duration'")
-        if duration <= 0 or abs(duration - (end - start)) > TIMELINE_TOLERANCE + 1e-9:
-            raise TimelineValidationError(f"Block {index} duration must be positive and equal end-start within 1 ms.")
-        text = raw.get("text")
-        if not isinstance(text, str) or not text.strip():
-            raise TimelineValidationError(f"Block {index} has empty 'text'.")
-        blocks.append(Block(index, start, end, duration, text, _optional_text(raw, "beat_id")))
-    raw_events = data.get("events", [])
-    if not isinstance(raw_events, list):
-        raise TimelineValidationError("'events' must be a list.")
-    events = []
-    for raw in raw_events:
-        if not isinstance(raw, dict):
-            raise TimelineValidationError("Every event must be a JSON object.")
-        time = _number(raw.get("time"), "event time")
-        if not 0 <= time <= scene_duration:
-            raise TimelineValidationError("Event time is outside scene_duration.")
-        if events and time < events[-1].time - ORDER_TOLERANCE:
-            raise TimelineValidationError("Events must be in timestamp order.")
-        label = raw.get("label")
-        if not isinstance(label, str) or not label.strip():
-            raise TimelineValidationError("Event label must be nonblank.")
-        events.append(Event(time, label, _optional_text(raw, "beat_id")))
-    return Timeline(scene_duration, tuple(blocks), run_id, tuple(events))
+        return finite_number(value, field)
+    except TimelineError as exc:
+        raise TimelineValidationError(str(exc)) from exc
 
 
 def compute_review_timestamps(start: float, end: float, scene_duration: float) -> dict[str, float]:

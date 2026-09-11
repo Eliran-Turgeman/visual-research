@@ -1,6 +1,5 @@
 """Offline diagnostics tests: no Manim, native tools, credentials or TTS required."""
 
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,11 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from manim_lib import doctor as d
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("installation_doctor", ROOT / "manim_lib" / "doctor.py")
-d = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(d)
 p = d.production
 
 
@@ -397,8 +394,9 @@ def test_cli_unsupported_python_is_failed_json_in_stdlib_isolation(version, tmp_
         "import runpy, sys\n"
         f"sys.version_info = {version!r}\n"
         "def forbid_package_import(event, args):\n"
-        "    if event == 'import' and args[0].split('.')[0] == 'manim_lib':\n"
-        "        raise AssertionError('Doctor must not import eager package exports')\n"
+        "    if event == 'import' and (args[0].split('.')[0] in ('manim', 'manim_voiceover')\n"
+        "                              or args[0] in ('manim_lib.theme', 'manim_lib.narrated_scene')):\n"
+        "        raise AssertionError('Doctor must not import visual package exports')\n"
         "sys.addaudithook(forbid_package_import)\n"
         "sys.argv = sys.argv[1:]\n"
         "runpy.run_path(sys.argv[0], run_name='__main__')\n"

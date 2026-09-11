@@ -29,9 +29,8 @@ Schema v1 (see examples\\ddtree_full\\teaching.json):
 
 ``timeline_mapping`` is complete, partial, or unavailable; partial/unavailable
 requires mapping_note. No timing/event mapping is invented for uninstrumented
-scenes. Optional timeline blocks follow the repository's legacy or v1 format.
-Legacy blocks may omit duration (derived from end minus start); explicit
-durations must agree within one millisecond. Zero-duration blocks are invalid.
+scenes. Timeline structure follows the shared stdlib-only ``manim_lib.timeline``
+protocol, including legacy omissions and its exact numeric boundary policy.
 Text, index/order, event-data and mathematical drift are hard errors. Duration
 ranges are review warnings, even when exceeded; explain rather than cut speech.
 Source digests (optional sha256, UTF-8 with LF newlines) detect content drift,
@@ -47,6 +46,8 @@ import math
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
+
+from manim_lib.timeline import Timeline, TimelineError, parse_timeline
 
 
 SCHEMA_VERSION = 1
@@ -530,87 +531,41 @@ def validate_contract(contract: Any, *, timeline=None, source_texts=None) -> dic
 
 
 def _validate_timeline(timeline, beats, mapping, issue):
-    if not isinstance(timeline, dict) or not isinstance(timeline.get("blocks"), list):
-        issue("timeline_shape", "timeline", "Expected timeline object with blocks array")
+    try:
+        parsed = parse_timeline(timeline)
+    except TimelineError as exc:
+        issue(f"timeline_{exc.code}", exc.path, exc.message)
         return
-    if "schema_version" in timeline and (
-        type(timeline["schema_version"]) is not int or timeline["schema_version"] != 1
-    ):
-        issue("timeline_shape", "timeline.schema_version", "Unsupported timeline version")
-    if "run_id" in timeline and not _text(timeline["run_id"]):
-        issue("timeline_shape", "timeline.run_id", "When supplied, run_id must be a nonempty string")
-    duration = timeline.get("scene_duration")
-    if type(duration) not in (int, float) or not math.isfinite(duration) or duration <= 0:
-        issue("timeline_shape", "timeline.scene_duration", "Expected finite positive scene duration")
-        return
-    blocks = timeline["blocks"]
-    if not blocks:
-        issue("timeline_shape", "timeline.blocks", "Empty narration is not temporal teaching evidence")
+    _validate_timeline_binding(parsed, beats, mapping, issue)
+
+
+def _validate_timeline_binding(timeline: Timeline, beats, mapping, issue):
+    """Teaching semantics only; structural checks belong to the shared parser."""
+    blocks = timeline.blocks
     if mapping == "complete" and len(blocks) != len(beats):
         issue("timeline_count", "timeline.blocks", "Block count differs from the complete beat mapping")
-    last_end = 0
     for i, block in enumerate(blocks):
-        path = f"timeline.blocks[{i}]"
-        if not isinstance(block, dict):
-            issue("timeline_shape", path, "Expected block object")
-            continue
-        if type(block.get("index")) is not int or block["index"] != i:
-            issue("timeline_order", path, "Index must match the block's rendered order")
-        if not _text(block.get("text")):
-            issue("timeline_shape", path, "Narration text must be nonempty")
-        values = [block.get(key) for key in ("start", "end")]
-        if "duration" in block:
-            values.append(block["duration"])
-        if not all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in values):
-            issue("timeline_shape", path, "Expected finite nonnegative timestamps")
-            continue
-        start, end = values[:2]
-        block_duration = block.get("duration", end - start)
-        if end <= start or block_duration <= 0:
-            issue("timeline_duration", path, "Narration blocks must have positive duration")
-        if end < start or start < last_end - 1e-6 or end > duration + 1e-6:
-            issue("timeline_order", path, "Blocks must be ordered, nonoverlapping and within scene duration")
-        if not math.isclose(end - start, block_duration, rel_tol=0, abs_tol=0.001):
-            issue("timeline_duration", path, "Duration differs from end minus start")
-        last_end = end
-    events = timeline.get("events", [])
-    if not isinstance(events, list):
-        issue("timeline_shape", "timeline.events", "Expected events array")
-        events = []
-    valid_events = []
-    last_time = 0
-    for i, event in enumerate(events):
-        if not isinstance(event, dict) or not _text(event.get("label")):
-            issue("timeline_shape", f"timeline.events[{i}]", "Expected labeled event")
-            continue
-        time = event.get("time")
-        if type(time) not in (int, float) or not math.isfinite(time) or not last_time <= time <= duration:
-            issue("timeline_order", f"timeline.events[{i}]", "Events must be ordered and within the scene")
-            continue
-        last_time = time
-        if "beat_id" in event and (
-            not isinstance(event["beat_id"], str) or event["beat_id"] not in beats
-        ):
+        if block.beat_id is not None and block.beat_id not in beats:
+            issue("reference", f"timeline.blocks[{i}]", "Unknown block beat_id")
+    for i, event in enumerate(timeline.events):
+        if event.beat_id is not None and event.beat_id not in beats:
             issue("reference", f"timeline.events[{i}]", "Unknown event beat_id")
-        valid_events.append(event)
     for bid, beat in beats.items():
         narration = beat.get("narration")
         if not narration:
             continue
         index = narration["index"]
-        if index >= len(blocks) or not isinstance(blocks[index], dict):
+        if index >= len(blocks):
             issue("timeline_missing", f"beats.{bid}", "Mapped narration block is absent")
             continue
         block = blocks[index]
-        if block.get("text") != narration["text"]:
+        if block.text != narration["text"]:
             issue("narration_drift", f"beats.{bid}", "Narration text differs; review and remap, do not silently accept")
-        if "beat_id" in block and block["beat_id"] != bid:
+        if block.beat_id is not None and block.beat_id != bid:
             issue("beat_drift", f"beats.{bid}", "Timeline beat_id disagrees with mapped order")
         bounds = beat.get("duration_range")
-        actual_duration = block.get("duration")
-        if actual_duration is None and all(type(block.get(key)) in (int, float) for key in ("start", "end")):
-            actual_duration = block["end"] - block["start"]
-        if bounds and type(actual_duration) in (int, float) and not bounds[0] <= actual_duration <= bounds[1]:
+        actual_duration = block.duration
+        if bounds and not bounds[0] <= actual_duration <= bounds[1]:
             explanation = beat.get("duration_explanation")
             issue(
                 "duration_review", f"beats.{bid}",
@@ -618,14 +573,13 @@ def _validate_timeline(timeline, beats, mapping, issue):
                 + (f"Explanation: {explanation}" if _text(explanation) else "Explain pacing in review; do not force narration cuts."),
                 warning=True,
             )
-        actual_events = [event for event in valid_events if event.get("beat_id") == bid]
+        actual_events = [event for event in timeline.events if event.beat_id == bid]
         expected_events = beat.get("events", [])
-        if expected_events and [e["label"] for e in actual_events] != [e["label"] for e in expected_events]:
+        if expected_events and [e.label for e in actual_events] != [e["label"] for e in expected_events]:
             issue("event_drift", f"beats.{bid}.events", "Mapped event labels/order differ or are missing")
         for actual, expected in zip(actual_events, expected_events):
-            if "data" in expected and not _equivalent(actual.get("data"), expected["data"]):
+            if "data" in expected and not _equivalent(actual.data, expected["data"]):
                 issue("event_data_drift", f"beats.{bid}.events", "Event data differs from the contracted state")
         for event in actual_events:
-            if all(type(block.get(key)) in (int, float) for key in ("start", "end")):
-                if not block["start"] <= event["time"] <= block["end"]:
-                    issue("event_timing", f"beats.{bid}.events", "Event lies outside its narration block")
+            if not block.start <= event.time <= block.end:
+                issue("event_timing", f"beats.{bid}.events", "Event lies outside its narration block")

@@ -32,7 +32,8 @@ from manim import Scene
 from manim.utils.sounds import get_full_sound_file_path
 
 from .theme import BACKGROUND
-from .production import _validate_beat_id, resolve_settings
+from .production import _validate_beat_id, resolve_settings, validate_timeline
+from .timeline import SCHEMA_VERSION
 
 try:
     from manim_voiceover import VoiceoverScene
@@ -296,13 +297,14 @@ class NarratedScene(VoiceoverScene):
     def _write_review_timeline(self) -> None:
         """Write the provider-independent narration review timeline."""
         timeline = {
-            "schema_version": 1,
+            "schema_version": SCHEMA_VERSION,
             "scene_duration": self.time,
             "blocks": self._review_blocks,
             "events": self._review_events,
         }
         if self._run_id:
             timeline["run_id"] = self._run_id
+        validate_timeline(timeline, run_id=self._run_id)
         self.review_timeline_path.parent.mkdir(parents=True, exist_ok=True)
         self.review_timeline_path.write_text(
             json.dumps(timeline, indent=2),

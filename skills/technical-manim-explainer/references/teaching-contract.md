@@ -59,6 +59,16 @@ Validation checks contract structure, supplied source hashes, worked
 calculations, and timeline mappings when provided. A duration-budget excess
 produces a `duration_review` warning: explain or repair the pacing, rather than
 automatically cutting a useful explanation to satisfy a timer.
+Timeline structure uses the same installed, stdlib-only `manim_lib.timeline`
+parser as rendering and frame review; see the
+[single timeline policy](production-review.md#standalone-frame-extraction).
+An invalid structure returns a `timeline_shape`, `timeline_order`, or
+`timeline_duration` error with a precise field path before semantic comparison.
+Teaching then separately checks narration text/count, beat identities/references,
+event labels/data and exact within-beat timing. A structurally valid timeline can
+still fail those teaching checks; rounding tolerance never excuses narration drift.
+The package's visual public exports are lazy, so canonical teaching/doctor/
+accounting imports and `python -S` CLI usage do not initialize Manim or providers.
 Missing source, timeline, or visual-event evidence is recorded in
 `omitted_checks`, not counted as a passed check. Source-content SHA-256 checks
 normalize CRLF to LF over UTF-8; the bound output artifact's contract/timeline

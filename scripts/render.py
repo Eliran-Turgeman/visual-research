@@ -1,15 +1,10 @@
-"""Thin, dependency-light entry point for manim_lib.production.
-
-Run the module by path so --help and missing-dependency errors do not first
-import manim_lib's eager visual-component exports.
-"""
+"""Thin, dependency-light entry point for manim_lib.production."""
 
 from pathlib import Path
-import runpy
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from manim_lib.production import main
 
 if __name__ == "__main__":
-    runpy.run_path(
-        str(Path(__file__).resolve().parents[1] / "manim_lib" / "production.py"),
-        run_name="__main__",
-    )
+    raise SystemExit(main())

@@ -204,8 +204,36 @@ plan exceeds the chosen cap or media/frames are missing or corrupt, rather
 than silently skipping required evidence. Split investigation deliberately or
 raise the cap knowingly; do not claim complete review from a truncated plan.
 
-Valid legacy timelines are supported. Present IDs must be nonblank; omit
-optional absent fields rather than writing `null`. Indices must be sequential
-from zero, timestamps finite and ordered, and durations positive/consistent.
+Rendering, frame extraction, review, the narration writer, and teaching use
+the single stdlib-only [`manim_lib.timeline`](../../../manim_lib/timeline.py)
+protocol/parser. Its structural policy is:
+
+- A nonempty block list, positive scene/block durations, zero-based sequential
+  integer indices (not booleans), and nonblank narration text/event labels.
+- Legacy omission of `schema_version`, `run_id`, block `beat_id`, event `beat_id`,
+  `events`, and block `duration` remains supported. Missing duration is inferred
+  as `end - start`; no input is sorted, renumbered, or mutated. A supplied schema
+  version must be integer `1`; supplied optional IDs must be nonblank strings,
+  never `null`. Managed rendering/review additionally require the matching run ID.
+- Timestamps/durations must be integers or floats, excluding booleans, and
+  convertible to finite binary64. Huge overflowing integers, NaN, and infinities
+  fail explicitly. Negative block starts are invalid.
+- Duration arithmetic and **block** scene overrun allow **at most 1 ms**;
+  block overlap and event ordering allow **at most 1 microsecond**.
+  Events must remain exactly within `[0, scene_duration]`, including endpoints.
+  Comparisons use the exact decimal spellings of converted floats, with no
+  relative tolerance or extra epsilon: `2.001 - 2` is at the allowed duration
+  boundary; the next representable float above `2.001` is outside it.
+- Event `data` stays opaque and intact for semantic comparison. Audio references
+  and other extension fields remain in the original document; this parser is
+  not an audio schema or a serialization that strips extensions.
+
+The render adapter preserves its original dict return; the extraction adapter
+still exports `Block`, `Event`, `Timeline`, and `TimelineValidationError`.
+Structural errors carry actionable field paths. Teaching reports the first
+structural failure before attempting semantic comparisons; narration/beat/count,
+event references/data/within-beat timing, and pacing remain teaching checks.
+These timeline tolerances are **not** encoded-media tolerances: review's
+100-ms/two-frame and render's 150-ms/two-frame codec checks are unchanged.
 Standalone extraction is not acceptance and does not create a managed render
 manifest for a direct-Manim video.
