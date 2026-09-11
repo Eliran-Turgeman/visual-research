@@ -49,34 +49,205 @@ they do not turn this repository into an autonomous LLM API framework.
 
 ## Requirements
 
-- Python 3.11-3.13
-- [Manim Community](https://docs.manim.community/) native dependencies
-- FFmpeg for video and audio assembly
-- A LaTeX distribution when a scene uses `MathTex` or `Tex`
+- Git and **Python 3.12 recommended** (`.python-version`); Python 3.11-3.13
+  remain supported. Install Python with [uv](https://docs.astral.sh/uv/getting-started/installation/)
+  or [python.org](https://www.python.org/downloads/).
+- [uv](https://docs.astral.sh/uv/) is the recommended installer: it uses the
+  committed `uv.lock`. It is optional; ordinary pip installation also works.
+- Manim's native libraries/build tools where needed, as listed below.
+- FFmpeg for video/audio assembly is supplied by the direct `imageio-ffmpeg`
+  dependency on platforms with a bundled wheel. A system `ffmpeg` on `PATH`
+  takes precedence; install one yourself if no bundled binary is available.
+- **LaTeX is optional**, only for scenes using `MathTex` or `Tex`. Those scenes
+  need a LaTeX distribution and `dvisvgm`; follow
+  [Manim's LaTeX instructions](https://docs.manim.community/en/v0.19.0/installation/uv.html#step-2-optional-installing-latex).
 
-Manim's installation guide documents platform-specific native dependencies.
-The minimal example uses `Text`, so it does not require LaTeX.
+The quick start uses `Text`, not LaTeX. **No API keys, narration service, or
+environment activation are required to install or render it.**
 
 ## Installation
 
-Create an isolated environment and install the package:
+### Quick start
+
+Clone the repository and enter it (all following commands run from this root):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev,voiceover-openrouter]"
+git clone https://github.com/Eliran-Turgeman/visual-research.git
+cd visual-research
 ```
 
-PowerShell activation:
+First install native prerequisites for your platform:
+
+- **Windows:** use a supported 64-bit Python installation. The standard
+  Windows wheels supply Manim's Cairo/Pango dependencies; no separate native
+  installation is normally needed.
+- **Ubuntu/Debian:** install a compiler, Python development headers, Cairo,
+  Pango, and `pkg-config`:
+
+  ```bash
+  sudo apt update
+  sudo apt install -y build-essential python3-dev libcairo2-dev libpango1.0-dev pkg-config
+  ```
+
+  If your Python comes from the distribution, also install its matching
+  `venv` package (for example `python3-venv`) for the pip route.
+- **macOS:** install [Homebrew](https://brew.sh/) and Xcode Command Line Tools
+  (run `xcode-select --install` if they are absent), then:
+
+  ```bash
+  brew install cairo pango pkg-config
+  ```
+
+These recommendations come from the version-matched
+[Manim installation guide](https://docs.manim.community/en/v0.19.0/installation/uv.html),
+[Pycairo](https://pycairo.readthedocs.io/en/latest/getting_started.html), and
+[ManimPango build instructions](https://github.com/ManimCommunity/ManimPango#building).
+Source builds need a C compiler and headers matching the selected Python.
+Other distributions/architectures may need their equivalent native packages.
+
+**Windows PowerShell — one setup command, then a silent managed render:**
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,voiceover-openrouter]"
+.\scripts\setup.ps1
+.\scripts\render.ps1 examples\minimal\scene.py MinimalExplainer `
+  --profile draft --provider none --output-dir media\runs --run-id minimal-draft-01
 ```
 
-Install `.[voiceover-gtts]`, `.[voiceover-openai]`, or
-`.[voiceover-azure]` instead when using those services.
+If PowerShell's execution policy blocks `.ps1` files, use the shared Python
+entrypoints instead; no policy change is needed. With a supported Python
+available as `python`:
+
+```powershell
+python scripts\setup.py
+.\.venv\Scripts\python.exe scripts\render.py examples\minimal\scene.py MinimalExplainer `
+  --profile draft --provider none --output-dir media\runs --run-id minimal-draft-01
+```
+
+**macOS/Linux — one setup command, then the same render:**
+
+```bash
+./scripts/setup.sh
+./scripts/render.sh examples/minimal/scene.py MinimalExplainer \
+  --profile draft --provider none --output-dir media/runs --run-id minimal-draft-01
+```
+
+Setup creates/reuses `.venv`, installs the editable package, and runs the local
+doctor without checking credentials. The render wrappers select `.venv`
+automatically; no activation is needed. Expect these files:
+
+```text
+media/runs/minimal-draft-01/video.mp4
+media/runs/minimal-draft-01/timeline.json
+media/runs/minimal-draft-01/manifest.json
+```
+
+The manifest should say `"status": "rendered"` and both JSON files should
+identify `minimal-draft-01`. Use a **fresh run ID** for each later render.
+This verifies installation and artifact generation, not production acceptance.
+
+### Installer and Python selection
+
+Both setup wrappers accept the same options:
+
+| Option | Behavior |
+|---|---|
+| `--installer auto` (default) | Use uv if installed, otherwise pip. |
+| `--installer uv` | Use the committed lock with uv; install uv first. |
+| `--installer pip` | Use ordinary editable pip installation; does not consume `uv.lock`. |
+| `--python PYTHON` | Select a supported Python version/executable, e.g. `3.12`; use an installed executable for pip. |
+| `--provider none` (default) | Request the base silent-render dependencies, without a TTS extra. |
+| `--dev` | Also install the test dependencies. |
+
+For example, explicitly select pip with `.\scripts\setup.ps1 --installer pip`
+or `./scripts/setup.sh --installer pip`. Use `--help` for the complete CLI.
+Python 3.12 is recommended and pinned for uv's manual project workflow.
+Setup can reuse a compatible environment or launcher interpreter; request
+`--python 3.12` to select that version explicitly, or choose 3.11/3.13.
+Setup does not install OS packages.
+
+For a manual uv workflow, `uv sync --locked` installs the minimal environment
+from the lock; `uv lock --check` verifies that it still matches `pyproject.toml`.
+Use `uv lock` to regenerate it only when deliberately changing dependencies,
+and commit the updated lock with the manifest change.
+
+Manual pip remains supported if you prefer to manage the environment yourself:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe scripts\doctor.py
+```
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python scripts/doctor.py
+```
+
+### Check installation or narration readiness
+
+The doctor uses the standard library, makes no network requests, and defaults
+to silent mode. Run it with the interpreter you want to check; even an
+incomplete environment can report missing dependencies:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\doctor.py --scene examples\minimal\scene.py
+.\.venv\Scripts\python.exe scripts\doctor.py --provider openrouter
+```
+
+```bash
+.venv/bin/python scripts/doctor.py --scene examples/minimal/scene.py
+.venv/bin/python scripts/doctor.py --provider openrouter
+```
+
+`--json` produces machine-readable diagnostics. `--require-tex` checks LaTeX
+even when a helper hides its use from scene inspection. `--skip-credentials`
+checks installed tooling without requiring service keys; setup always uses
+this mode for its selected provider. Without that flag, readiness for a chosen
+keyed provider requires its environment variables, but does not validate them
+against the remote service. No keys are required for installation itself.
+
+### Optional development and TTS dependencies
+
+Keep development dependencies separate from the minimal installation:
+
+```powershell
+.\scripts\setup.ps1 --dev
+.\.venv\Scripts\python.exe -m pytest
+```
+
+```bash
+./scripts/setup.sh --dev
+.venv/bin/python -m pytest
+```
+
+To add narration dependencies, rerun setup with **one explicitly chosen**
+provider: `none`, `openrouter`, `gtts`, `external-gtts`, `openai`, or `azure`.
+For example, `.\scripts\setup.ps1 --provider openrouter` or
+`./scripts/setup.sh --provider openrouter`. Add `--dev` when setting up an
+environment that should also run tests. Setup preserves unrelated installed
+packages in an existing compatible `.venv`; use a fresh environment to verify
+a base-only installation.
+
+The `voiceover-openai` and `voiceover-openrouter` extras require incompatible
+OpenAI SDK major versions; choose one per environment rather than
+`--all-extras`. gTTS and Azure do not share that restriction.
+
+Manual pip users can install `-e ".[dev]"`, `-e ".[voiceover-openrouter]"`,
+`-e ".[voiceover-gtts]"` (also for `external-gtts`),
+`-e ".[voiceover-openai]"`, or `-e ".[voiceover-azure]"` with their `.venv`
+interpreter. Configure credentials only when you choose narration; setup
+never prompts for or writes keys. Selecting extras does not itself enable TTS.
+
+### Clean-install CI
+
+[Installation CI](.github/workflows/installation.yml) starts from a fresh
+checkout/environment on Windows, macOS, and Linux for **both uv and pip** with
+Python 3.12. Additional Linux uv runs cover Python 3.11 and 3.13. It checks
+lock consistency, executes the actual setup/render wrappers and doctor, and
+verifies a tiny silent, no-LaTeX MP4 against its rendered manifest and timeline.
+A separate job runs focused offline installation tests with the dev extra.
+Neither installation smoke tests nor the doctor call paid TTS services.
 
 ## Narration and TTS
 
@@ -92,6 +263,7 @@ animations inside each block use the returned tracker's duration.
 | `none` | Silent deterministic draft; no service or credentials. |
 | `openrouter` | Explicit OpenRouter selection; requires `OPENROUTER_API_KEY`. Defaults to MAI-Voice-2 / Harper. |
 | `gtts` | Explicit networked speech; no API key. Useful for speech drafts. |
+| `external-gtts` | Explicit networked gTTS with external audio assembly; uses the `voiceover-gtts` extra, no API key. |
 | `openai` | Set `OPENAI_API_KEY`; managed defaults are `tts-1-hd`, voice `alloy`, speed `1`. |
 | `azure` | Set `AZURE_SUBSCRIPTION_KEY` and `AZURE_SERVICE_REGION`. |
 
@@ -204,11 +376,11 @@ For a direct render without a managed run manifest, use Manim itself:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "none"
-python -m manim -ql examples\minimal\scene.py MinimalExplainer
+.\.venv\Scripts\python.exe -m manim -ql examples\minimal\scene.py MinimalExplainer
 ```
 
 ```bash
-MANIM_TTS_PROVIDER=none python -m manim -ql examples/minimal/scene.py MinimalExplainer
+MANIM_TTS_PROVIDER=none .venv/bin/python -m manim -ql examples/minimal/scene.py MinimalExplainer
 ```
 
 The output is `media/videos/scene/480p15/MinimalExplainer.mp4`. Direct Manim

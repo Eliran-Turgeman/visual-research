@@ -49,11 +49,14 @@ FFmpeg is resolved from PATH, then the existing imageio_ffmpeg distribution.
 PyAV (a Manim dependency) reads stream metadata; the resolved FFmpeg decodes the
 complete result. TeX tools are preflighted for direct Tex/MathTex use; pass
 ``--require-tex`` for scenes using TeX indirectly through helper libraries.
+The standalone installation doctor reuses the prerequisite checks below without
+requiring a scene, importing the visual library, or contacting a speech service.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 from datetime import datetime, timezone
 import hashlib
 import importlib
@@ -194,11 +197,107 @@ def find_ffmpeg() -> str:
 def _checked(command: list[str], *, label: str, **kwargs) -> subprocess.CompletedProcess:
     try:
         result = subprocess.run(command, check=False, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        raise RenderError(f"{label} timed out; check its installation.") from exc
     except OSError as exc:
         raise RenderError(f"Cannot start {label}; check its installation and executable path.") from exc
     if result.returncode:
         raise RenderError(f"{label} exited with code {result.returncode}.", result.returncode)
     return result
+
+
+def check_python() -> None:
+    if not (3, 11) <= sys.version_info[:2] < (3, 14):
+        raise RenderError("Use Python >=3.11,<3.14; select it with MANIM_PYTHON.")
+
+
+def check_scene_file(scene_file: Path) -> None:
+    if not scene_file.is_file() or scene_file.suffix != ".py":
+        raise RenderError(f"Scene source must be an existing Python file: {scene_file}")
+
+
+def check_credential(name: str, provider: str, environ: dict) -> None:
+    if not environ.get(name, "").strip():
+        raise RenderError(
+            f"{name} is required for {provider}. Set it before rendering; "
+            "credentials are never inferred from another provider."
+        )
+
+
+def required_modules(provider: str) -> tuple[str, ...]:
+    return ("manim", "av", *DEPENDENCIES[provider])
+
+
+def dependency_install_command(module: str, provider: str) -> str:
+    extra = "voiceover-gtts" if provider == "external-gtts" else f"voiceover-{provider}"
+    return "pip install -e ." if module in ("manim", "av") else f'pip install -e ".[{extra}]"'
+
+
+def check_module(module: str, provider: str, *, isolated: bool = False) -> None:
+    """Import a required module; isolation also detects crashes in native loaders."""
+    try:
+        if isolated:
+            flags = ["-S"] if sys.flags.no_site else []
+            result = subprocess.run(
+                [sys.executable, *flags, "-c",
+                 "import importlib, sys; importlib.import_module(sys.argv[1])", module],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, check=False, timeout=30,
+            )
+            if result.returncode:
+                raise ImportError("Dependency import process failed.")
+        else:
+            importlib.import_module(module)
+    except (ImportError, OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise RenderError(
+            f"Cannot import {module}. In the selected Python environment run "
+            f"`{dependency_install_command(module, provider)}` and verify its native dependencies."
+        ) from exc
+
+
+def check_ffmpeg() -> dict:
+    ffmpeg = find_ffmpeg()
+    result = _checked(
+        [ffmpeg, "-version"], label="FFmpeg preflight", capture_output=True, text=True,
+        timeout=30,
+    )
+    lines = result.stdout.splitlines()
+    if not lines or not lines[0].startswith("ffmpeg version "):
+        raise RenderError("FFmpeg returned no recognizable version; verify its installation.")
+    return {"ffmpeg": ffmpeg, "ffmpeg_version": lines[0]}
+
+
+def scene_requires_tex(scene_file: Path) -> bool:
+    """Detect direct TeX calls, ignoring comments/literals and allowing Manim aliases."""
+    try:
+        tree = ast.parse(scene_file.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise RenderError("Scene source must be readable UTF-8 Python.") from exc
+    constructors = {"MathTex", "Tex", "SingleStringMathTex", "BulletedList", "Title"}
+    aliases = {
+        alias.asname
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "manim"
+        for alias in node.names
+        if alias.name in constructors and alias.asname
+    }
+    return any(
+        isinstance(node, ast.Call) and (
+            isinstance(node.func, ast.Name) and node.func.id in constructors | aliases
+            or isinstance(node.func, ast.Attribute) and node.func.attr in constructors
+        )
+        for node in ast.walk(tree)
+    )
+
+
+def check_tex_tool(name: str) -> None:
+    executable = shutil.which(name)
+    if not executable:
+        raise RenderError(f"{name} is required by this scene. Install a TeX distribution and add it to PATH.")
+    _checked(
+        [executable, "--version"], label=f"{name} preflight", capture_output=True,
+        text=True, timeout=30,
+    )
 
 
 def preflight(
@@ -209,40 +308,19 @@ def preflight(
     require_tex: bool = False,
 ) -> dict:
     """Check interpreter, provider credentials/imports and native tools, offline."""
-    if not (3, 11) <= sys.version_info[:2] < (3, 14):
-        raise RenderError("Use Python >=3.11,<3.14; select it with MANIM_PYTHON.")
-    if not scene_file.is_file() or scene_file.suffix != ".py":
-        raise RenderError(f"Scene source must be an existing Python file: {scene_file}")
+    check_python()
+    check_scene_file(scene_file)
     env = os.environ if environ is None else environ
     provider = settings["provider"]
     for name in CREDENTIALS.get(provider, ()):
-        if not env.get(name, "").strip():
-            raise RenderError(
-                f"{name} is required for {provider}. Set it before rendering; "
-                "credentials are never inferred from another provider."
-            )
-    for module in ("manim", "av", *DEPENDENCIES[provider]):
-        try:
-            importlib.import_module(module)
-        except (ImportError, OSError) as exc:
-            extra = "voiceover-gtts" if provider == "external-gtts" else f"voiceover-{provider}"
-            install = "pip install -e ." if module in ("manim", "av") else f'pip install -e ".[{extra}]"'
-            raise RenderError(
-                f"Cannot import {module}. In the selected Python environment run "
-                f"`{install}` and verify its native dependencies."
-            ) from exc
-    ffmpeg = find_ffmpeg()
-    version = _checked(
-        [ffmpeg, "-version"], label="FFmpeg preflight", capture_output=True, text=True
-    ).stdout.splitlines()[0]
-    source = scene_file.read_text(encoding="utf-8")
-    if require_tex or re.search(r"\b(?:MathTex|Tex|SingleStringMathTex|BulletedList|Title)\s*\(", source):
+        check_credential(name, provider, env)
+    for module in required_modules(provider):
+        check_module(module, provider)
+    tools = check_ffmpeg()
+    if require_tex or scene_requires_tex(scene_file):
         for name in ("latex", "dvisvgm"):
-            executable = shutil.which(name)
-            if not executable:
-                raise RenderError(f"{name} is required by this scene. Install a TeX distribution and add it to PATH.")
-            _checked([executable, "--version"], label=f"{name} preflight", capture_output=True, text=True)
-    return {"ffmpeg": ffmpeg, "ffmpeg_version": version}
+            check_tex_tool(name)
+    return tools
 
 
 def _positive_number(value, label: str, *, zero: bool = False) -> float:

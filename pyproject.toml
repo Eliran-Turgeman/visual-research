@@ -9,6 +9,7 @@ description = "Reusable guidance and Manim primitives for narrated technical exp
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "imageio-ffmpeg>=0.6,<0.7",
     "manim>=0.19.0,<0.20",
 ]
 
@@ -32,6 +33,15 @@ voiceover-azure = [
 ]
 dev = [
     "pytest>=8.3,<9",
+]
+
+[tool.uv]
+# manim-voiceover[openai] requires OpenAI SDK 1.x; OpenRouter uses SDK 2.x.
+conflicts = [
+    [
+        { extra = "voiceover-openai" },
+        { extra = "voiceover-openrouter" },
+    ],
 ]
 
 [tool.setuptools.packages.find]
