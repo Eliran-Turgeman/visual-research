@@ -1,26 +1,30 @@
+[CmdletBinding()]
 param(
-    [ValidateSet("-ql", "-qm", "-qh")]
-    [string]$Quality = "-qh",
-    [switch]$Silent
+    [ValidateSet("-ql", "-qm", "-qh", "-qp", "-qk")]
+    [string]$Quality,
+    [switch]$Silent,
+    [ValidateSet("draft", "production")]
+    [string]$Profile = "draft",
+    [ValidateSet("none", "openrouter", "gtts", "external-gtts", "openai", "azure")]
+    [string]$Provider,
+    [string]$OutputDir,
+    [string]$RunId,
+    [string]$CacheDir
 )
 
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
-Set-Location $root
-$env:PATH = "$root\.venv\Scripts;$env:PATH"
-$env:MANIM_QUALITY = $Quality
-$env:MANIM_TTS_PROVIDER = if ($Silent) { "none" } else { "openrouter" }
-if (-not $Silent) {
-    if (-not $env:OPENROUTER_API_KEY) {
-        $env:OPENROUTER_API_KEY = [Environment]::GetEnvironmentVariable(
-            "OPENROUTER_API_KEY", "User"
-        )
+$renderArgs = @("$PSScriptRoot\scene.py", "DDTreeFullExplainer", "--profile", $Profile, "--require-tex")
+if ($Quality) { $renderArgs += "--quality=$Quality" }
+if ($Silent) {
+    if ($Provider -and $Provider -ne "none") {
+        throw "-Silent cannot be combined with a non-silent -Provider."
     }
-    if (-not $env:OPENROUTER_API_KEY) {
-        throw "OPENROUTER_API_KEY is required for MAI narration. Use -Silent only for drafts."
-    }
-    $env:OPENROUTER_TTS_MODEL = "microsoft/mai-voice-2"
-    $env:OPENROUTER_TTS_VOICE = "en-US-Harper:MAI-Voice-2"
-    $env:OPENROUTER_TTS_SPEED = "0.96"
+    $renderArgs += @("--provider", "none")
+} elseif ($Provider) {
+    $renderArgs += @("--provider", $Provider)
 }
-& "$root\scripts\render.ps1" "$PSScriptRoot\scene.py" DDTreeFullExplainer
+if ($OutputDir) { $renderArgs += @("--output-dir", $OutputDir) }
+if ($RunId) { $renderArgs += @("--run-id", $RunId) }
+if ($CacheDir) { $renderArgs += @("--cache-dir", $CacheDir) }
+& "$root\scripts\render.ps1" @renderArgs
 exit $LASTEXITCODE

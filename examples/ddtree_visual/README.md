@@ -56,10 +56,16 @@ $env:MANIM_TTS_PROVIDER = "openrouter"
 ```powershell
 $env:OPENROUTER_API_KEY = (Get-ItemProperty HKCU:\Environment).OPENROUTER_API_KEY
 $env:MANIM_TTS_PROVIDER = "openrouter"
-.\.venv\Scripts\python.exe -m manim -qk --fps 60 examples\ddtree_visual\scene.py DDTreeVisualExplainer
+.\.venv\Scripts\python.exe -m manim -qh --fps 60 examples\ddtree_visual\scene.py DDTreeVisualExplainer
 ```
 
 Final output: `media\videos\scene\1080p60\DDTreeVisualExplainer.mp4`
+
+`-qh` is 1080p60; `-qk` is 4K60 and has four times as many pixels per
+frame, not a measured fourfold runtime difference. The commands above are
+the direct-Manim escape hatch. Use the [root production workflow](../../README.md#render-a-managed-episode)
+for managed draft/production runs and manifest-bound review. A successful
+render alone is not acceptance.
 
 ## Dependencies
 

@@ -6,14 +6,16 @@ complete target-driven verification round. The visual payoff is the same
 `a` and `model` nodes leaving the tree for the output, with the unmatched
 target token `runs` becoming the next anchor.
 
-This is a new episode; the earlier samples and DDTree scenes are preserved.
+This is the canonical complete-episode workflow reference; the smaller examples
+demonstrate individual mechanisms and representations.
 
 ## Render with MAI narration
 
 From the repository root:
 
 ```powershell
-.\examples\ddtree_full\render.ps1
+.\examples\ddtree_full\render.ps1 -Profile production -Provider openrouter `
+  -OutputDir media\runs -RunId ddtree-production-01
 ```
 
 The wrapper uses the isolated `.venv`, the repository render script, and:
@@ -26,42 +28,63 @@ The wrapper uses the isolated `.venv`, the repository render script, and:
 | Speech speed | `0.96` |
 | Video | Manim high quality, 1080p60 |
 
-`OPENROUTER_API_KEY` must be available in the process or Windows user
-environment. The wrapper loads it without printing or storing it. Missing
-credentials are an error: this episode never silently substitutes gTTS or
-creates an unnamed silent final.
+`OPENROUTER_API_KEY` must be available in the process. The wrapper no longer
+loads user-level credentials automatically. Production requires an explicitly
+selected provider and fails on missing credentials; it never silently
+substitutes gTTS or creates an unnamed silent final. With no arguments the
+wrapper now defaults to a silent low-quality **draft**, not paid production.
+An explicit `MANIM_TTS_PROVIDER` can select narration, so use `-Provider none`
+when a silent draft is required regardless of the environment.
 
 Output:
 
 ```text
-media\videos\scene\1080p60\DDTreeFullExplainer.mp4
-media\videos\scene\1080p60\DDTreeFullExplainer.srt
+media\runs\ddtree-production-01\video.mp4
+media\runs\ddtree-production-01\timeline.json
+media\runs\ddtree-production-01\manifest.json
 ```
 
 For a deliberate silent rough cut:
 
 ```powershell
-.\examples\ddtree_full\render.ps1 -Quality -ql -Silent
+.\examples\ddtree_full\render.ps1 -Profile draft -Provider none -Quality -ql `
+  -OutputDir media\runs -RunId ddtree-draft-01
 ```
 
-That writes `media\videos\scene\480p15\DDTreeFullExplainer.mp4`.
+That writes `media\runs\ddtree-draft-01\video.mp4`. Choose a fresh run ID for
+each render. `-Silent` remains a draft compatibility option and is rejected
+with production. See [managed workflow options](../../README.md#render-a-managed-episode).
 When the narration manifest exists, silent beats use the actual cached MAI
 durations rather than word-count estimates.
 
 ## Reproducible speech assets
 
-Pre-cache the entire narration independently of the renderer:
+Managed renders reuse valid speech from `media\voiceovers\openrouter` by
+default, independent of their fresh run ID. Use `-CacheDir CACHE_ROOT` to choose
+another root; the wrapper appends the provider name. Retained audio snapshots
+live in each run's `audio` directory and do not change when the shared cache
+changes. See the [cache settings](../../skills/technical-manim-explainer/references/narration.md#cache-reuse-and-recovery)
+for environment precedence and cross-worktree reuse.
+
+The standalone legacy helper can pre-cache narration independently of the
+renderer:
 
 ```powershell
-$env:OPENROUTER_API_KEY = [Environment]::GetEnvironmentVariable("OPENROUTER_API_KEY", "User")
 .\.venv\Scripts\python.exe -m examples.ddtree_full.narration
 ```
 
-This uses the same Manim Voiceover cache as the final render. Audio and its
+This is an explicit speech-generation action and requires the process's
+OpenRouter key; authorize provider use before running it. Audio and its
 provider metadata are retained under `media\voiceovers\`; the episode manifest
 at `media\review\ddtree_full\narration.json` identifies each text, audio file,
 duration, model, and voice. No credentials are written to these files.
-Unchanged clips are reused on subsequent renders.
+This helper's legacy cache path is not the managed provider-scoped cache;
+do not assume invoking it prepopulates `media\voiceovers\openrouter`.
+Unchanged valid clips can be reused only with their matching cache location
+and provider configuration.
+Managed runs retain their own audio artifacts; inspect the run's paths rather
+than assuming a mutable global narration manifest is its review evidence.
+See [audition and recovery guidance](../../skills/technical-manim-explainer/references/narration.md).
 
 ## The visual argument
 
@@ -130,20 +153,45 @@ Semantics were cross-referenced with official revision
 The new bonus has been emitted but has no target KV entry until the next
 round processes it.
 
+## Teaching review
+
+The primary transfer check changes the target outcome: **if the target chooses
+a token absent from the current node's children, is the token invalid?**
+Expected answer: no; it is emitted as valid target output, the current round
+stops reusing that branch's precomputed work, and the token becomes the next
+anchor. A second check asks whether a larger draft-mass sum guarantees a
+wall-clock speedup. Expected answer: no; the objective is under the draft
+distribution and does not account for every target/hardware cost.
+
+Keep technical correctness, production review, and actual learner responses
+separate. These checks define what the explanation should enable; no learner
+study or measured learning improvement is claimed. See the
+[compact contract guidance](../../skills/technical-manim-explainer/references/teaching-contract.md).
+
 ## Review artifacts
 
-Each render writes its actual narration timeline to
-`media\review\ddtree_full\timeline.json`. Preserve the rough-cut frame index
-before a later render overwrites that timeline.
+Managed renders preserve a run-specific video and actual narration timeline.
+Inspect the production run above:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\extract_narration_frames.py `
-  media\videos\scene\1080p60\DDTreeFullExplainer.mp4 `
-  media\review\ddtree_full\timeline.json `
-  media\review\ddtree_full\final
+python scripts\review_production.py inspect `
+  media\runs\ddtree-production-01\manifest.json `
+  --output media\runs\ddtree-production-01\review.json `
+  --frames-dir media\runs\ddtree-production-01\frames
+python scripts\validate_teaching.py examples\ddtree_full\teaching.json `
+  --timeline media\runs\ddtree-production-01\timeline.json --check-sources `
+  --output media\runs\ddtree-production-01\teaching-validation.json
 ```
 
 The resulting index and contact sheets cover the near-start, middle, and
-near-end of all 27 beats. Also inspect the continuous transitions, especially
+near-end of all 27 beats, video endpoints, block boundaries, and declared
+visual events. Also inspect the continuous transitions, especially
 the arithmetic-to-score arrivals, flattening, ancestry-row construction, and
-the final target miss.
+the final target miss. Watch and listen to the complete final video; then
+follow the [explicit acceptance procedure](../../skills/technical-manim-explainer/references/production-review.md#reproducible-local-review-commands).
+Technical inspection and teaching validation alone do not accept a run.
+
+Direct Manim remains available and writes the legacy
+`media\review\ddtree_full\timeline.json`; preserve it immediately with its
+matching video if using that escape hatch. Managed commands above avoid
+accidentally pairing artifacts from different runs.

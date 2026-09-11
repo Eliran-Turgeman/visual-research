@@ -228,9 +228,81 @@ class TestMapAncestryToMask:
         node_to_index = {"root": 0, "A": 1}
         matrix = LabeledMatrix([[0, 0], [0, 0]])
         anims, overlays = map_ancestry_to_mask(
-            parent_map, matrix, node_to_index, include_self=False
+            parent_map, matrix, node_to_index, include_self=False, allow_partial=True
         )
         assert len(overlays) == 1
+
+    @pytest.mark.parametrize("allow_partial", [False, True])
+    @pytest.mark.parametrize(
+        "parents",
+        [{"a": "a"}, {"a": "b", "b": "a"}, {"a": "b", "b": "c", "c": "b"}],
+    )
+    def test_cycles_are_rejected_even_in_partial_maps(self, parents, allow_partial):
+        matrix = LabeledMatrix([[0]])
+        with pytest.raises(ValueError, match="cycle"):
+            map_ancestry_to_mask(
+                parents, matrix, {}, allow_partial=allow_partial
+            )
+
+    def test_missing_parent_requires_explicit_partial_map_support(self):
+        matrix = LabeledMatrix([[0, 0], [0, 0]])
+        with pytest.raises(ValueError, match="Missing parent"):
+            map_ancestry_to_mask({"child": "root"}, matrix, {"child": 0, "root": 1})
+        _, overlays = map_ancestry_to_mask(
+            {"child": "root"}, matrix, {"child": 0, "root": 1},
+            include_self=False, allow_partial=True,
+        )
+        assert len(overlays) == 1
+        assert overlays[0].get_center() == pytest.approx(matrix.cells[0][1].get_center())
+
+    def test_index_subset_keeps_ancestors_through_unindexed_nodes(self):
+        matrix = LabeledMatrix([[0, 0], [0, 0]])
+        _, overlays = map_ancestry_to_mask(
+            {"root": None, "middle": "root", "leaf": "middle"},
+            matrix, {"root": 0, "leaf": 1}, include_self=False,
+        )
+        assert len(overlays) == 1
+        assert overlays[0].get_center() == pytest.approx(matrix.cells[1][0].get_center())
+
+    def test_partial_map_does_not_invent_an_undefined_parents_diagonal(self):
+        matrix = LabeledMatrix([[0, 0], [0, 0]])
+        _, overlays = map_ancestry_to_mask(
+            {"child": "root"}, matrix, {"child": 0, "root": 1}, allow_partial=True
+        )
+        assert len(overlays) == 2
+        assert {tuple(overlay.get_center()) for overlay in overlays} == {
+            tuple(matrix.cells[0][0].get_center()),
+            tuple(matrix.cells[0][1].get_center()),
+        }
+
+    def test_rectangular_mask_only_requires_highlighted_cells_to_fit(self):
+        matrix = LabeledMatrix([[0, 0]])
+        _, overlays = map_ancestry_to_mask(
+            {"root": None, "child": "root"}, matrix, {"child": 0, "root": 1},
+            include_self=False,
+        )
+        assert len(overlays) == 1
+        assert overlays[0].get_center() == pytest.approx(matrix.cells[0][1].get_center())
+
+    def test_unknown_index_node_is_rejected_for_complete_maps(self):
+        with pytest.raises(ValueError, match="Missing node"):
+            map_ancestry_to_mask({"root": None}, LabeledMatrix([[0]]), {"unknown": 0})
+
+    @pytest.mark.parametrize(
+        ("indices", "error"),
+        [
+            ({"root": -1}, IndexError),
+            ({"root": 2}, IndexError),
+            ({"root": 0, "leaf": 0}, ValueError),
+            ({"root": 0.5}, ValueError),
+            ({"root": True}, ValueError),
+        ],
+    )
+    def test_invalid_mask_indices_are_rejected(self, indices, error):
+        with pytest.raises(error):
+            map_ancestry_to_mask(
+                {"root": None, "leaf": "root"}, LabeledMatrix([[0, 0], [0, 0]]), indices
+            )
 
     def test_wide_tree_no_cross_sibling_cells(self):
         # root -> A, root -> B  (siblings should NOT attend to each other)

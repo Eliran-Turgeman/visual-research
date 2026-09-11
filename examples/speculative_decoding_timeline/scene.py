@@ -53,6 +53,10 @@ NARRATION = (
     "One target pass checks the proposed positions together.",
     "Here, all three are accepted. The same prefix is ready sooner, even including drafting.",
 )
+BEAT_IDS = (
+    "first-dependency", "three-waits", "sequential-drafting",
+    "tentative-not-committed", "one-batched-check", "earlier-same-prefix",
+)
 BASELINE_Y = 1.60
 DRAFT_Y = -0.30
 ROW_Y = (-0.95, -1.50, -2.05)
@@ -376,7 +380,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
 
     @contextmanager
     def beat(self, index):
-        with self.narrate(NARRATION[index]) as tracker:
+        with self.narrate(NARRATION[index], beat_id=BEAT_IDS[index]) as tracker:
             start = self.time
             yield tracker
             remaining = tracker.duration - (self.time - start)
@@ -407,6 +411,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
             self.play(
                 Create(p.stems[0]), FadeIn(p.baseline_tokens[0]), run_time=0.4
             )
+            self.record_visual_event(f"baseline-token-ready:{WORDS[0]}")
             self.wait(0.35)
 
         self.remove(p.baseline_intervals[0], p.origin, p.stems[0], p.baseline_tokens[0])
@@ -427,6 +432,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
                     FadeIn(p.baseline_tokens[index]),
                     run_time=0.3,
                 )
+            self.record_visual_event("baseline-prefix-ready:" + ",".join(WORDS))
 
         self.remove(*p.stages, *p.baseline_intervals, *p.baseline_tokens, *p.stems)
         self.add(p.baseline)
@@ -445,6 +451,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
                 self.add(interval)
                 self.run_work(interval, 0.5)
                 self.play(FadeIn(candidate.dot), run_time=0.15)
+            self.record_visual_event("draft-complete:" + ",".join(WORDS))
             self.wait(0.25)
             self.remove(*(candidate.dot for candidate in p.candidates))
             self.add(*p.candidates)
@@ -478,6 +485,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
             self.add(p.verifier)
             self.bring_to_front(p.verify_rows, *p.candidates)
             self.run_work(p.verifier, max(2.0, tracker.duration - 0.3))
+            self.record_visual_event("verification-complete")
 
         with self.beat(5):
             self.play(
@@ -489,6 +497,7 @@ class SpeculativeDecodingTimeline(NarratedScene):
                 ],
                 run_time=0.65,
             )
+            self.record_visual_event("output-ready:" + ",".join(WORDS))
             self.play(
                 Restore(p.baseline),
                 Create(p.finish_guides),

@@ -5,162 +5,102 @@ description: Plan, implement, narrate, render, inspect, and improve technically 
 
 # Technical Manim Explainer
 
-Use this skill whenever the user asks for a technical explainer, visualization,
-or narrated Manim video. The user does not need to request a storyboard,
-narration plan, rendering, or review separately. Read `MANIM_GUIDE.md` before
-implementing a scene.
+Use this skill for technical explainers, visualizations, and narrated Manim
+videos. Research, storyboard, implementation, narration, rendering, inspection,
+and revision are implicit parts of the request. The coding agent directs the
+work; this repository is a small toolkit, not an autonomous generation service.
 
-## Goal
+## Load only the current stage
 
-Produce a technically correct explanation that helps an engineering audience
-build a useful mental model. Optimize for comprehension, not entertainment.
-Prefer a complete small example to a broad but shallow survey.
+Read [MANIM_GUIDE.md](MANIM_GUIDE.md) before implementing a scene. Load the
+following references when their stage begins, rather than adding every source,
+transcript, and tool output to every prompt:
 
-## Public example names
+| Stage | Reference |
+|---|---|
+| Research and teaching design | [Teaching contract](references/teaching-contract.md) |
+| Speech preparation and recovery | [Narration](references/narration.md) |
+| Render, review, repair, and acceptance | [Production review](references/production-review.md) |
+| Cost reporting or workflow comparisons | [Measurement](references/measurement.md) |
 
-Name example directories after the technical subject or demonstrated component,
-using `snake_case`, with matching descriptive `PascalCase` scene classes.
-Use a mechanism or representation suffix to distinguish examples of the same
-subject, such as `speculative_decoding_flow` and `speculative_decoding_timeline`.
-Keep test names, review paths, and render instructions consistent. Avoid
-self-praise, internal demo labels, and slogans as public example identifiers.
+Use [DDTree full](../../examples/ddtree_full/README.md) as the complete episode
+reference and [speculative decoding timeline](../../examples/speculative_decoding_timeline/README.md)
+as the compact shared-scale reference. They demonstrate approaches, not a
+mandatory scene template or evidence of learner improvement.
 
 ## Required workflow
 
-1. **Inspect the evidence.** Read the relevant paper, code, documentation,
-   notes, and user description. Locate definitions, assumptions, equations,
-   state transitions, and implementation details that affect semantics.
-2. **Find the teaching target.** State internally, in one or two sentences,
-   what the viewer should understand by the end. Separate the central mechanism
-   from motivation, prerequisites, implementation details, and results.
-3. **Infer prerequisites.** Use the request and context to decide what the
-   viewer already knows. Briefly establish missing prerequisites; do not repeat
-   background the viewer is assumed to know.
-4. **Choose worked examples.** For an algorithm, mathematical procedure,
-   optimization, or systems mechanism, use at least one small input that can be
-   worked through completely. When useful, use two:
-   - a minimal example that establishes the mechanism;
-   - an example showing the advantage, edge case, or non-obvious behavior.
-5. **Design backward from a visible discovery.** State the relationship the
-   final picture must make obvious without a headline. Sketch three key
-   compositions: opening, mechanism, and payoff. Choose a visual metaphor
-   grounded in the mechanism, such as distance for time or area for probability.
-   Reject a plan whose conclusion exists only in narration or a caption.
-6. **Choose representations by meaning.** Specify what shape, position, color,
-   and motion mean for each object. Different concepts need distinguishable
-   forms, not a box for every noun. Reuse `manim_lib` when its semantics fit;
-   keep a justified new representation scene-local until it recurs.
-7. **Storyboard cause and effect with narration.** For each short beat, record
-   the viewer's question, visible cause, resulting state change, focal region,
-   continuing objects, narration, and duration budget. Remove redundant prose
-   and any motion that merely announces an operation instead of showing it.
-8. **Build and render a rough silent animation first.** Establish composition,
-   dependency order, identity, pacing, and the discovery before polishing
-   surfaces. Use the repository render script at draft quality. The mechanism
-   must occupy the frame, and the comparison must use honest common scales.
-9. **Add final styling and synchronized voiceover.** Keep useful structural
-   contrast, not mandatory shadows or halos. Use short narration blocks and
-   actual speech durations to budget meaningful actions and pauses. Do not
-   stretch a fade or leave long static gaps to fill a voiceover block.
-10. **Render the deliverable.** Use the repository script at the requested or
-    production quality. Preserve the rough cut for comparison.
-11. **Inspect the output.** Inspect representative frames and, when possible,
-    watch the complete video with audio. A successfully encoded MP4 is not a
-    completed explainer.
-12. **Revise and render again.** Fix obvious correctness, layout, timing,
-    narration, and rendering problems before completion.
+1. **Ground the explanation.** Read the relevant paper, code, documentation,
+   and user constraints. Record source versions and exact claim locations.
+   Resolve disagreements or disclose them; never invent simpler behavior.
+2. **Write a compact teaching contract.** State the audience, prerequisites,
+   one mechanism-level objective, likely misconception, source-backed claims,
+   and a small fully worked example. Add one or two transfer questions with
+   expected answers. Keep technical, production, and learner criteria separate.
+3. **Design backward from a visible discovery.** Sketch opening, mechanism,
+   and payoff. Specify what shape, position, color, and motion mean. The final
+   relationship must be apparent before its caption names it.
+4. **Storyboard cause and effect with narration.** Give each short beat a
+   stable ID, teaching purpose, visible cause and state change, continuing
+   objects, spoken text, and duration budget. Link it to the contract's claims.
+5. **Implement and render a silent draft.** Use semantic Manim objects where
+   they fit, preserve identity, and show operands before results. Select draft
+   mode explicitly; credentials alone must not trigger paid speech in wrappers.
+   Check geometry and inspect transitions before spending on narration.
+6. **Prepare speech deliberately.** Audition difficult terms with the chosen
+   provider, maintain a pronunciation glossary, then reuse a stable supported
+   model/voice/delivery. Keep blocks short and synchronize to actual durations.
+   Preserve valid cached clips. Disclose AI-generated voice for OpenAI TTS.
+7. **Render production explicitly.** Select a non-silent provider and intended
+   quality. Preserve the run manifest, video, timeline, source revision, and
+   speech configuration. A successful render is only **rendered**, not accepted.
+8. **Review → repair → validate, within a budget.** Inspect the actual artifact:
+   narration-block samples, frames around transitions, and complete playback
+   with audio. Record timestamped findings; fix the highest-impact cause;
+   rerun relevant checks and render when necessary. Use the bounded procedure
+   in the review reference, not an unbounded self-critique loop.
+9. **Accept only with evidence.** Bind review to the current manifest and
+   artifact hashes. Require technical and production checks plus explicit
+   audiovisual and teaching review. Agent confidence, passing tests, contact
+   sheets, and the existence of an MP4 are insufficient on their own.
+   If full review or learner evidence is unavailable, report that limitation;
+   do not fabricate approval or learning gains.
 
-Do not pause for approval between these steps unless the request is genuinely
-ambiguous in a way that changes the technical explanation.
+Proceed without routine approval pauses. Stop at an actual permission boundary,
+exhausted repair budget, or unresolved source conflict; report the remaining
+blocker instead of silently weakening the acceptance criteria.
 
 ## Explanation rules
 
-- Start with the mechanism or the problem it solves. Avoid generic openings.
-- Use concrete examples before or alongside abstraction.
-- Show algorithms changing state rather than describing changes over static
-  slides.
-- Make cause precede effect: a dependency must visibly resolve before its
-  dependent operation begins. A flash followed by an unrelated result is not
-  a demonstration of computation.
-- Use toy values small enough to verify on screen.
-- Introduce equations, labels, and structures progressively.
-- Compare against a baseline when it explains why the technique exists.
-- Preserve the viewer's mental map: update stable objects instead of rebuilding
-  or moving the whole layout.
-- Keep one primary visual idea on screen at a time.
-- Let the mechanism, not a persistent heading, dominate the composition.
-- Preserve shared scales and show overhead when comparing cost or latency.
-- Prefer emphasis, transformation, and state changes over walls of text.
-- Let narration carry prose; keep on-screen text to short visual anchors.
-- Introduce structure before detail and leave a brief visual rest after dense
-  state changes.
-- End when the promised idea is established; do not add a generic recap.
+- Prefer a complete small mechanism to a broad survey. Establish only missing
+  prerequisites; start with the mechanism or the problem it solves.
+- Use exact terminology, equations, assumptions, and independently verified
+  intermediate values. Label toy values and conditional outcomes explicitly.
+- Make causes precede effects and keep conceptual entities spatially stable.
+  A flash followed by a disconnected answer is not a computation.
+- Keep one primary visual idea in focus. Introduce structure before detail;
+  use honest common scales and include overhead in comparisons.
+- Let narration explain meaning while readable labels anchor exact values.
+  Avoid filler, text walls, decorative motion, and reading every label aloud.
+- Leave a short rest after dense state changes; never stretch a trivial fade
+  or a static slide merely to occupy the voiceover.
+- Preserve the mechanism's size and continuity. Remove excess content rather
+  than shrinking the entire picture. Use new scene-local representations when
+  existing components do not express the concept.
+- End once the promised relationship is established, without a generic recap.
 
-## Correctness contract
+## Deliverables
 
-Correctness outranks visual elegance.
+Provide scene source, compact teaching contract and provenance, reproducible
+render/provider settings, final video, required speech/cache assets, run
+manifest and timeline, review evidence bound to that run, and one reproduction
+command. Distinguish **draft**, **rendered**, **reviewed**, and **accepted** in the
+handoff. State unresolved findings, unknown costs, untested learner outcomes,
+and environment-specific requirements.
 
-- Treat provided source material as authoritative.
-- Do not simplify by inventing different algorithm behavior.
-- Preserve assumptions and preconditions that affect the result.
-- Use exact equations and established terminology.
-- Distinguish toy/example values from measured or reported values.
-- When prose is ambiguous, use paper equations, tests, and source code to
-  disambiguate behavior.
-- Compute worked examples independently and verify every displayed intermediate
-  value.
-- Make visual semantics faithful: an animation that looks like replacement,
-  acceptance, branching, movement, or deletion must mean that operation.
-- If sources disagree, resolve or disclose the discrepancy instead of silently
-  choosing the easier version.
+## Public names
 
-## Narration rules
-
-Narration is part of the design, not a post-production layer. Write it in the
-voice of a technically strong engineer explaining an idea to another engineer.
-
-- Use short sentences and short voiceover blocks.
-- Let narration explain meaning while labels provide anchors and exact values.
-- Do not read all visible text verbatim.
-- Avoid "Let's dive in", "In this exciting video", "As you can see", and other
-  generic filler.
-- Avoid long summaries and unsupported claims.
-- Define unfamiliar terms immediately before they matter.
-- Leave short pauses after dense state changes, not after decorative motion.
-
-## Review checklist
-
-Before completion, check:
-
-- no overlap, clipping, tiny text, or poor contrast;
-- important objects stay in frame and do not move unexpectedly;
-- transitions are slow enough to understand and fast enough to stay relevant;
-- narration and visual actions refer to the same state at the same time;
-- no long interval lacks a relevant visual change or emphasis;
-- equations, labels, examples, and terminology match the source;
-- transforms, removals, highlights, and branches communicate true semantics;
-- no unexplained color, shape, or positional distinction;
-- no unnecessary object, paragraph, camera move, or decorative animation;
-- the mechanism remains legible and visually dominant at the intended viewing
-  size; nothing was globally shrunk just to fit too much content;
-- object forms have explicit meanings, and continuity survives changes in
-  representation; borders, shadows, and halos earn their place;
-- with sound muted and the headline hidden, the visible cause, effect, and
-  final relationship can still be identified;
-- the key visual discovery occurs before its concluding caption or narration;
-- audio is present, intelligible, and not cut off when narration was requested.
-
-Inspect frames near every major transition, plus the first and final frame.
-If frame extraction is available, create a contact sheet. Watch the full result
-when audio timing or transient motion cannot be judged from stills.
-
-## Normal deliverables
-
-- Manim scene source;
-- reproducible narration/provider configuration;
-- rendered narrated MP4;
-- generated audio/cache assets required to reproduce it;
-- one simple documented render command.
-
-Report assumptions or environment-specific requirements that materially affect
-reproduction.
+Use subject/component `snake_case` directories and descriptive `PascalCase`
+scene names. A mechanism suffix can distinguish representations, such as
+`speculative_decoding_flow` and `speculative_decoding_timeline`. Keep tests,
+review paths, and commands consistent; avoid self-praise and internal slogans.

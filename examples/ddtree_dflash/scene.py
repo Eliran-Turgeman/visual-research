@@ -1,11 +1,7 @@
 """Narrated explainer for DFlash drafting and DDTree verification."""
 
-from contextlib import contextmanager
-import hashlib
-import json
-import os
 from pathlib import Path
-from types import SimpleNamespace
+from uuid import uuid4
 
 from manim import (
     BLUE,
@@ -24,7 +20,6 @@ from manim import (
     RED,
     RIGHT,
     RoundedRectangle,
-    Scene,
     SurroundingRectangle,
     Text,
     Transform,
@@ -48,10 +43,7 @@ from manim_lib import (
     TreeNode,
 )
 
-try:
-    from manim_voiceover import VoiceoverScene
-except ImportError:
-    VoiceoverScene = Scene
+from manim_lib.narrated_scene import NarratedScene
 
 
 BG = "#10141C"
@@ -63,9 +55,8 @@ CYAN = "#55DDE0"
 # Universal narration review timeline: written after every successful
 # construct(), regardless of TTS provider, so the frame-extraction tooling in
 # scripts/extract_narration_frames.py has actual rendered start/end
-# timestamps for every narration block to sample. This lives under the
-# gitignored media*/ prefix (see .gitignore) alongside rendered video, never
-# under source control.
+# timestamps for every narration block to sample. Direct renders use this
+# gitignored default; managed renders override it with MANIM_TIMELINE_PATH.
 REVIEW_TIMELINE_PATH = Path("media/review/ddtree_dflash/timeline.json")
 
 # Exposed at module scope (rather than kept local to best_first_example) so
@@ -86,133 +77,21 @@ BEST_FIRST_POSITIONS = {
 BEST_FIRST_SCORE_STYLE = {"direction": DOWN, "buff": 0.06, "font_size": 14}
 
 
-class DDTreeDFlashExplainer(VoiceoverScene):
+class DDTreeDFlashExplainer(NarratedScene):
     """Explain how DFlash and DDTree cooperate in one decoding round."""
+
+    review_timeline_path = REVIEW_TIMELINE_PATH
+    external_voiceover_subdir = "ddtree_external"
 
     def setup(self):
         super().setup()
         self.camera.background_color = BG
-        self._voiceover_enabled = False
-        self._external_voiceover = False
-        self._external_tracks = []
-        # Universal, provider-independent record of every narration block's
-        # actual rendered start/end timestamps. Populated once, in narrate()'s
-        # finally clause, no matter which TTS branch ran.
-        self._review_blocks = []
-        default_provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "none"
-        provider = os.getenv("MANIM_TTS_PROVIDER", default_provider).lower()
-        if provider == "openrouter":
-            from manim_lib.openrouter_voiceover import (
-                DEFAULT_OPENROUTER_TTS_MODEL,
-                DEFAULT_OPENROUTER_TTS_VOICE,
-                OpenRouterSpeechService,
-            )
 
-            style_degree = os.getenv("OPENROUTER_TTS_STYLE_DEGREE")
-            self.set_speech_service(
-                OpenRouterSpeechService(
-                    model=os.getenv(
-                        "OPENROUTER_TTS_MODEL", DEFAULT_OPENROUTER_TTS_MODEL
-                    ),
-                    voice=os.getenv(
-                        "OPENROUTER_TTS_VOICE", DEFAULT_OPENROUTER_TTS_VOICE
-                    ),
-                    speed=float(os.getenv("OPENROUTER_TTS_SPEED", "0.96")),
-                    style=os.getenv("OPENROUTER_TTS_STYLE"),
-                    style_degree=(
-                        float(style_degree) if style_degree is not None else None
-                    ),
-                )
-            )
-            self._voiceover_enabled = True
-        elif provider == "gtts":
-            from manim_voiceover.services.gtts import GTTSService
-
-            self.set_speech_service(GTTSService(lang="en", tld="com"))
-            self._voiceover_enabled = True
-        elif provider == "openai":
-            from manim_voiceover.services.openai import OpenAIService
-
-            self.set_speech_service(
-                OpenAIService(voice=os.getenv("OPENAI_TTS_VOICE", "alloy"))
-            )
-            self._voiceover_enabled = True
-        elif provider == "azure":
-            from manim_voiceover.services.azure import AzureService
-
-            self.set_speech_service(AzureService())
-            self._voiceover_enabled = True
-        elif provider == "external-gtts":
-            self._external_voiceover = True
-            self._external_dir = Path("media/voiceovers/ddtree_external").resolve()
-            self._external_dir.mkdir(parents=True, exist_ok=True)
-        elif provider != "none":
-            raise ValueError(
-                "MANIM_TTS_PROVIDER must be none, openrouter, gtts, "
-                "external-gtts, openai, or azure"
-            )
-
-    @contextmanager
-    def narrate(self, text: str):
-        """Provider-agnostic narration block.
-
-        Every branch below yields a tracker to the caller's ``with`` body, but
-        the actual scene-clock start/end bookkeeping lives in exactly one
-        place: the outer ``finally``. That keeps the four providers (voiceover
-        services, external gTTS, and silent) from each re-implementing their
-        own copy of the same recording logic, and guarantees a block is
-        recorded (with whatever start/end it reached) even if the caller's
-        body raises, instead of leaving ``_review_blocks`` silently short.
-        The nested ``with self.voiceover(...)`` still runs its own cleanup
-        (including its synchronization wait) via the normal context-manager
-        protocol before our ``finally`` observes ``self.time``.
-        """
-        index = len(self._review_blocks)
-        start = self.time
-        try:
-            if self._voiceover_enabled:
-                with self.voiceover(text=text) as tracker:
-                    yield tracker
-            elif self._external_voiceover:
-                from gtts import gTTS
-                from mutagen.mp3 import MP3
-
-                digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
-                audio_path = self._external_dir / f"{digest}.mp3"
-                if not audio_path.exists():
-                    gTTS(text=text, lang="en", tld="com").save(str(audio_path))
-                duration = MP3(audio_path).info.length
-                track_start = start
-                tracker = SimpleNamespace(duration=duration)
-                yield tracker
-                remaining = duration - (self.time - track_start)
-                if remaining > 0:
-                    self.wait(remaining)
-                self._external_tracks.append(
-                    {
-                        "start": track_start,
-                        "duration": duration,
-                        "file": str(audio_path),
-                        "text": text,
-                    }
-                )
-            else:
-                yield SimpleNamespace(duration=max(1.8, len(text.split()) / 2.65))
-        finally:
-            end = self.time
-            self._review_blocks.append(
-                {
-                    "index": index,
-                    "start": start,
-                    "end": end,
-                    "duration": end - start,
-                    "text": text,
-                }
-            )
-
-    def paced(self, tracker, *animations, fraction=0.58, minimum=0.7, maximum=4.5):
-        run_time = min(maximum, max(minimum, tracker.duration * fraction))
-        self.play(*animations, run_time=run_time)
+    def add_sound(self, sound_file: str | Path, *args, **kwargs) -> None:
+        """Keep direct external-gTTS renders on their legacy post-mux path."""
+        if self._external_voiceover and not self._run_id and self._narrating:
+            return
+        super().add_sound(sound_file, *args, **kwargs)
 
     def heading(self, text: str, color=WHITE):
         heading = Text(text, font_size=38, weight="BOLD", color=color)
@@ -250,34 +129,19 @@ class DDTreeDFlashExplainer(VoiceoverScene):
         self.tree_verification()
         self.lossless_commit()
         self.system_tradeoff()
-        if self._external_voiceover:
-            manifest = {
-                "scene_duration": self.time,
-                "tracks": self._external_tracks,
-            }
-            (self._external_dir / "manifest.json").write_text(
-                json.dumps(manifest, indent=2),
-                encoding="utf-8",
-            )
-        self._write_review_timeline()
+        self._finalize()
 
     def _write_review_timeline(self):
-        """Write the universal, provider-independent narration review timeline.
-
-        Only reached once construct() has run every section without raising,
-        so a failed render never leaves a stale or partial timeline.json
-        behind. scripts/extract_narration_frames.py consumes this file to
-        pull start/middle/end review frames for every narration block.
-        """
-        timeline = {
-            "scene_duration": self.time,
-            "blocks": self._review_blocks,
-        }
-        REVIEW_TIMELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        REVIEW_TIMELINE_PATH.write_text(
-            json.dumps(timeline, indent=2),
-            encoding="utf-8",
-        )
+        """Atomically publish the shared writer's evolving timeline schema."""
+        path = self.review_timeline_path
+        pending = path.with_name(f".{path.name}.{uuid4().hex}.writing")
+        self.review_timeline_path = pending
+        try:
+            super()._write_review_timeline()
+            pending.replace(path)
+        finally:
+            self.review_timeline_path = path
+            pending.unlink(missing_ok=True)
 
     def opening(self):
         title = self.heading("DFlash + DDTree", color=CYAN)
@@ -521,8 +385,8 @@ class DDTreeDFlashExplainer(VoiceoverScene):
                 fraction=0.54,
             )
             formula_steps = EquationSteps(
-                r"Q(y_1,y_2,y_3) = q_1(y_1)",
-                r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)",
+                r"Q(y_1) = q_1(y_1)",
+                r"Q(y_1,y_2) = q_1(y_1)\,q_2(y_2)",
                 r"Q(y_1,y_2,y_3) = q_1(y_1)\,q_2(y_2)\,q_3(y_3)",
                 font_size=30,
             )

@@ -124,10 +124,17 @@ class TokenSequence(VGroup):
     def append_token(
         self, token: str, *, state: TokenState = TokenState.NEUTRAL
     ) -> TokenBox:
-        """Append a token at the sequence edge without moving the existing prefix."""
+        """Append without moving the prefix, inheriting its current uniform scale.
+
+        Spacing is ``buff`` at that scale. An empty sequence starts with a
+        default-sized token. The new token's state is independent of the prefix.
+        """
         box = TokenBox(token, state=state)
         if self.token_boxes:
-            box.next_to(self.token_boxes[-1], buff=self.buff)
+            previous = self.token_boxes[-1]
+            scale = previous.box.height / box.box.height
+            box.scale(scale)
+            box.next_to(previous, RIGHT, buff=self.buff * scale)
         self.token_boxes.append(box)
         self.add(box)
         return box

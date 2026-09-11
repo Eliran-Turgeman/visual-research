@@ -45,13 +45,11 @@ from manim import (
 
 from storyboard import (
     BEATS,
-    BEAT_COUNT,
-    BONUS_TOKEN,
     CANDIDATE_PATH,
-    Q1,
-    Q2,
-    Q3,
-    VERIFICATION_RESULT,
+    DRAFT_MARGINALS,
+    TARGET_CONDITIONALS,
+    VERIFICATION,
+    greedy_choice,
 )
 from manim_lib.theme import (
     ACCENT,
@@ -94,8 +92,8 @@ REVIEW_TIMELINE_PATH = Path("media/review/dflash_visual/timeline.json")
 
 # Positions exposed for layout tests
 RIBBON_POSITION = (0.0, RIBBON_Y, 0.0)
-CONTEXT_TOKENS = ("The", "model", "can")
-SLOT_COUNT = 3
+CONTEXT_TOKENS = ("We", "see")
+SLOT_COUNT = len(DRAFT_MARGINALS)
 
 
 class DFlashVisualExplainer(NarratedScene):
@@ -104,6 +102,8 @@ class DFlashVisualExplainer(NarratedScene):
 
     review_timeline_path = REVIEW_TIMELINE_PATH
     external_voiceover_subdir = "dflash_external"
+    verification = VERIFICATION
+    target_conditionals = TARGET_CONDITIONALS
 
     def setup(self):
         super().setup()
@@ -137,28 +137,55 @@ class DFlashVisualExplainer(NarratedScene):
         return VGroup(box, txt)
 
     def _make_committed_token(self, text):
-        box = RoundedRectangle(
-            width=SLOT_WIDTH, height=SLOT_HEIGHT, corner_radius=0.06,
-            stroke_color=COMMITTED_COLOR, stroke_width=STROKES.normal.width,
-            fill_color=COMMITTED_COLOR, fill_opacity=0.18,
-        )
-        txt = Text(text, font_size=SLOT_FONT, color=TEXT_PRIMARY).move_to(box)
-        return VGroup(box, txt)
+        return self._make_token_box(text, state=TokenState.ACCEPTED)
 
     def _make_candidate_token(self, text):
-        box = RoundedRectangle(
-            width=SLOT_WIDTH, height=SLOT_HEIGHT, corner_radius=0.06,
-            stroke_color=PRIMARY.light, stroke_width=STROKES.normal.width,
-            fill_color=PRIMARY.base, fill_opacity=0.14,
-        )
-        txt = Text(text, font_size=SLOT_FONT, color=TEXT_PRIMARY).move_to(box)
-        return VGroup(box, txt)
+        return self._make_token_box(text, state=TokenState.SPECULATIVE)
 
     def _arrange_ribbon(self, items, y=RIBBON_Y):
         group = VGroup(*items)
         group.arrange(RIGHT, buff=0.1)
         group.move_to((0, y, 0))
         return group
+
+    def _make_distributions(self):
+        dists = [
+            ProbabilityDistribution(
+                {token: (token, probability) for token, probability in q.items()},
+                max_bar_width=1.0, bar_height=0.20,
+                font_size=16, bar_color=PRIMARY.base,
+            )
+            for q in DRAFT_MARGINALS
+        ]
+        group = VGroup(*dists).arrange(RIGHT, buff=1.2, aligned_edge=UP)
+        group.move_to((0, DIST_Y, 0))
+        return dists, group
+
+    def _make_target_row(self):
+        """Align causal next-token choices with their proposal positions."""
+        targets = []
+        for i, token in enumerate(self.verification.target_choices):
+            target = self._make_token_box(token, state=TokenState.ACTIVE)
+            if i < len(self._candidates):
+                x = self._candidates[i].get_x()
+            else:
+                x = self._candidates[-1].get_x() + SLOT_WIDTH + 0.1
+            target.move_to((x, 0.65, 0))
+            targets.append(target)
+        return targets
+
+    def _make_bonus(self):
+        bonus = self._make_token_box(
+            self.verification.bonus_token, state=TokenState.ACTIVE,
+        )
+        boundary = self.verification.accepted_count
+        if boundary < len(self._candidates):
+            bonus.move_to(self._candidates[boundary])
+        else:
+            bonus.next_to(self._candidates[-1], RIGHT, buff=0.1)
+        bonus.box.set_stroke(BONUS_COLOR, width=STROKES.heavy.width)
+        bonus.label.set_color(BONUS_COLOR)
+        return bonus
 
     # --- Construct ---
 
@@ -175,8 +202,10 @@ class DFlashVisualExplainer(NarratedScene):
         self._beat_5_marginals()
         self._beat_6_candidate_path()
         self._beat_7_target_verification()
-        self._beat_8_commit()
-        self._beat_9_bridge()
+        self._beat_8_discard_suffix()
+        self._beat_9_commit()
+        self._beat_10_greedy_equivalence()
+        self._beat_11_bridge()
 
         self._finalize()
 
@@ -242,7 +271,7 @@ class DFlashVisualExplainer(NarratedScene):
         )
 
         # Sequential fill animation
-        seq_tokens = ["the", "model", "works"]
+        seq_tokens = CANDIDATE_PATH
         filled = []
 
         with self.narrate(beat.narration) as tracker:
@@ -389,38 +418,21 @@ class DFlashVisualExplainer(NarratedScene):
         beat = BEATS[4]
 
         # Build probability distributions from storyboard data
-        dist_entries = [
-            {"the": ("the", 0.55), "a": ("a", 0.35), "this": ("this", 0.10)},
-            {"model": ("model", 0.60), "system": ("system", 0.30), "code": ("code", 0.10)},
-            {"works": ("works", 0.52), "runs": ("runs", 0.28), "fails": ("fails", 0.20)},
-        ]
-
-        dists = []
-        for entries in dist_entries:
-            d = ProbabilityDistribution(
-                entries, max_bar_width=1.0, bar_height=0.20,
-                font_size=16, bar_color=PRIMARY.base,
-            )
-            dists.append(d)
-
-        dist_group = VGroup(*dists)
-        dist_group.arrange(RIGHT, buff=1.2, aligned_edge=UP)
-        dist_group.move_to((0, DIST_Y, 0))
+        dists, dist_group = self._make_distributions()
 
         # Position labels
         pos_labels = []
         for i, d in enumerate(dists):
-            lbl = Text(f"q{i+1}", font_size=16, color=TEXT_MUTED)
+            lbl = Text(f"q{i+1} (toy)", font_size=16, color=TEXT_MUTED)
             lbl.next_to(d, UP, buff=0.12)
             pos_labels.append(lbl)
         pos_label_group = VGroup(*pos_labels)
 
-        # Arrows from draft box to distributions
-        draft_to_dist = Arrow(
+        # Stop above the labels, rather than crossing q2.
+        draft_to_dist = Line(
             self._draft_group.get_bottom(),
-            dist_group.get_top(),
-            color=DRAFT_COLOR, stroke_width=2, buff=0.15,
-            max_tip_length_to_length_ratio=0.15,
+            pos_label_group.get_top() + UP * 0.08,
+            color=DRAFT_COLOR, stroke_width=2, buff=0.07,
         )
 
         with self.narrate(beat.narration) as tracker:
@@ -499,7 +511,14 @@ class DFlashVisualExplainer(NarratedScene):
             c.move_to(self._masks[i])
             candidates.append(c)
 
+        self._regime_label = Text(
+            "greedy decoding · temperature = 0",
+            font_size=22, color=TEXT_SECONDARY,
+        ).move_to((0, 3.2, 0))
+        self.play(FadeOut(self._target_group), run_time=0.3)
+
         with self.narrate(beat.narration) as tracker:
+            self.paced(tracker, FadeIn(self._regime_label), fraction=0.2)
             # Highlight top entries
             self.paced(
                 tracker,
@@ -529,28 +548,38 @@ class DFlashVisualExplainer(NarratedScene):
     def _beat_7_target_verification(self):
         beat = BEATS[7]
 
-        # Target check marks / crosses above each candidate
-        check_marks = []
-        for i, (tok, accepted) in enumerate(zip(CANDIDATE_PATH, VERIFICATION_RESULT)):
-            symbol = "✓" if accepted else "✗"
-            color = SUCCESS.base if accepted else DANGER.base
-            mark = Text(symbol, font_size=22, color=color)
-            mark.next_to(self._candidates[i], UP, buff=0.12)
-            check_marks.append(mark)
-
-        # Target output label
-        target_check_label = Text(
-            "target verifies in one pass",
+        self.play(
+            *[FadeOut(m) for m in [
+                self._draft_group, self._mechanism_extras, self._draft_to_dist,
+                self._dist_group, self._pos_labels,
+            ]],
+            run_time=0.5,
+        )
+        self._target_tokens = self._make_target_row()
+        self._target_row_label = Text(
+            "target argmax\non draft prefixes",
             font_size=18, color=TARGET_COLOR,
-        ).next_to(self._target_group, DOWN, buff=0.2)
+        ).next_to(self._target_tokens[0], LEFT, buff=0.45)
+
+        check_marks = []
+        for i, candidate in enumerate(self._candidates):
+            if i < self.verification.accepted_count:
+                symbol, color = "match", SUCCESS.base
+            elif i == self.verification.accepted_count:
+                symbol, color = "STOP", DANGER.base
+            else:
+                symbol, color = "unused", TEXT_MUTED
+            mark = Text(symbol, font_size=18, color=color)
+            mark.move_to((candidate.get_x(), 1.45, 0))
+            check_marks.append(mark)
 
         with self.narrate(beat.narration) as tracker:
             self.paced(
                 tracker,
-                FadeIn(target_check_label),
-                fraction=0.2,
+                *[FadeIn(t) for t in self._target_tokens],
+                FadeIn(self._target_row_label),
+                fraction=0.35,
             )
-            # Check marks appear sequentially
             self.paced(
                 tracker,
                 LaggedStart(
@@ -561,95 +590,129 @@ class DFlashVisualExplainer(NarratedScene):
             )
 
         self._check_marks = check_marks
-        self._target_check_label = target_check_label
 
     # ================================================================
-    # Beat 8: Commit accepted tokens + bonus token
+    # Beat 8: A later match is not an accepted prefix
     # ================================================================
-    def _beat_8_commit(self):
+    def _beat_8_discard_suffix(self):
         beat = BEATS[8]
-
-        # Count accepted tokens
-        accepted_count = sum(1 for v in VERIFICATION_RESULT if v)
-
-        # Transform accepted candidates to committed green
-        committed_new = []
-        reject_anims = []
-        commit_anims = []
-
-        for i, (tok, accepted) in enumerate(zip(CANDIDATE_PATH, VERIFICATION_RESULT)):
-            if accepted:
-                new_committed = self._make_committed_token(tok)
-                new_committed.move_to(self._candidates[i])
-                commit_anims.append(Transform(self._candidates[i], new_committed))
-                committed_new.append(self._candidates[i])
-            else:
-                red_tok = self._make_slot(tok, color=REJECTED_COLOR)
-                red_tok.move_to(self._candidates[i])
-                reject_anims.append(Transform(self._candidates[i], red_tok))
-
-        # Bonus token
-        bonus = RoundedRectangle(
-            width=SLOT_WIDTH, height=SLOT_HEIGHT, corner_radius=0.06,
-            stroke_color=BONUS_COLOR, stroke_width=STROKES.heavy.width,
-            fill_color=BONUS_COLOR, fill_opacity=0.18,
-        )
-        bonus_text = Text(BONUS_TOKEN, font_size=SLOT_FONT, color=BONUS_COLOR)
-        # Position bonus token after last candidate
-        last_pos = self._candidates[-1].get_center()
-        bonus.move_to(last_pos + RIGHT * (SLOT_WIDTH + 0.12))
-        bonus_text.move_to(bonus)
-        bonus_group = VGroup(bonus, bonus_text)
-
-        bonus_label = Text(
-            "bonus token (from target)",
-            font_size=16, color=BONUS_COLOR,
-        )
-        bonus_label.next_to(bonus_group, DOWN, buff=0.2)
+        boundary = self.verification.accepted_count
+        self._rejected_suffix = self._candidates[boundary:]
+        wrong_prefix_targets = self._target_tokens[boundary + 1:]
+        self._suffix_note = Text(
+            "after the wrong prefix → unused",
+            font_size=20, color=DANGER.light,
+        ).move_to((1.3, -0.3, 0))
 
         with self.narrate(beat.narration) as tracker:
-            # Commit accepted
-            if commit_anims:
-                self.paced(tracker, *commit_anims, fraction=0.3)
-            # Reject any rejected
-            if reject_anims:
-                self.paced(tracker, *reject_anims, fraction=0.2)
-                self.play(
-                    *[FadeOut(self._candidates[i]) for i, v in enumerate(VERIFICATION_RESULT) if not v],
-                    run_time=0.4,
+            if self._rejected_suffix:
+                self.paced(
+                    tracker,
+                    *[t.animate.set_state(TokenState.REJECTED)
+                      for t in self._rejected_suffix],
+                    fraction=0.3,
                 )
-            # Show bonus token
+                for token in self._rejected_suffix:
+                    token.set_state(TokenState.REJECTED)
+            if wrong_prefix_targets:
+                self.paced(
+                    tracker,
+                    *[t.animate.set_opacity(0.25) for t in wrong_prefix_targets],
+                    FadeIn(self._suffix_note),
+                    fraction=0.3,
+                )
+            if self._rejected_suffix:
+                self.paced(
+                    tracker,
+                    *[FadeOut(t) for t in self._rejected_suffix],
+                    fraction=0.2,
+                )
+
+    # ================================================================
+    # Beat 9: Commit the prefix, then the target choice at the boundary
+    # ================================================================
+    def _beat_9_commit(self):
+        beat = BEATS[9]
+        boundary = self.verification.accepted_count
+        self._committed_new = self._candidates[:boundary]
+        bonus_group = self._make_bonus()
+        self._bonus_label = Text(
+            "target bonus → progress",
+            font_size=16, color=BONUS_COLOR,
+        ).next_to(bonus_group, DOWN, buff=0.15)
+
+        with self.narrate(beat.narration) as tracker:
+            if self._committed_new:
+                self.paced(
+                    tracker,
+                    *[t.animate.set_state(TokenState.ACCEPTED)
+                      for t in self._committed_new],
+                    fraction=0.3,
+                )
+                for token in self._committed_new:
+                    token.set_state(TokenState.ACCEPTED)
             self.paced(
                 tracker,
-                FadeIn(bonus_group, shift=RIGHT * 0.2),
-                FadeIn(bonus_label),
-                fraction=0.3,
+                TransformFromCopy(self._target_tokens[boundary], bonus_group),
+                FadeIn(self._bonus_label),
+                fraction=0.4,
             )
 
-        # Fade out check marks
         self.play(
             *[FadeOut(m) for m in self._check_marks],
-            FadeOut(self._target_check_label),
+            *[FadeOut(m) for m in self._target_tokens],
+            FadeOut(self._target_row_label),
+            FadeOut(self._suffix_note),
             run_time=0.4,
         )
         self._bonus_group = bonus_group
-        self._bonus_label = bonus_label
-        self._committed_new = committed_new
+        self.ribbon_items.extend(self._committed_new + [bonus_group])
 
     # ================================================================
-    # Beat 9: Bridge to DDTree
+    # Beat 10: Correct target choices, not progress, establish equivalence
     # ================================================================
-    def _beat_9_bridge(self):
-        beat = BEATS[9]
+    def _beat_10_greedy_equivalence(self):
+        beat = BEATS[10]
+        baseline = []
+        prefix = ()
+        for committed in self._committed_new + [self._bonus_group]:
+            token = greedy_choice(self.target_conditionals[prefix])
+            prefix += (token,)
+            mob = self._make_committed_token(token)
+            mob.move_to((committed.get_x(), 0.65, 0))
+            baseline.append(mob)
+        self._baseline_tokens = baseline
+        label = Text(
+            "target-only greedy", font_size=18, color=TEXT_SECONDARY,
+        ).next_to(baseline[0], LEFT, buff=0.45)
+        invariant = Text(
+            "same target + causal prefix + tie-breaking",
+            font_size=22, color=SUCCESS.light,
+        ).move_to((0, -0.45, 0))
+        scope = Text(
+            "greedy equivalence ≠ a sampling proof",
+            font_size=20, color=TEXT_MUTED,
+        ).next_to(invariant, DOWN, buff=0.4)
+        self._equivalence_labels = VGroup(label, invariant, scope)
 
-        # Fade mechanism details, keep ribbon
-        mechanism_fadeouts = []
-        for mob in [self._target_group, self._draft_group,
-                    self._mechanism_extras, self._draft_to_dist,
-                    self._dist_group, self._pos_labels]:
-            mechanism_fadeouts.append(FadeOut(mob))
+        with self.narrate(beat.narration) as tracker:
+            self.paced(tracker, FadeIn(label), fraction=0.12)
+            for mob in baseline:
+                self.paced(tracker, FadeIn(mob), fraction=0.16)
+            self.paced(tracker, FadeIn(invariant), fraction=0.25)
+            self.paced(tracker, FadeIn(scope), fraction=0.2)
 
-        self.play(*mechanism_fadeouts, run_time=0.6)
+    # ================================================================
+    # Beat 11: Bridge to DDTree
+    # ================================================================
+    def _beat_11_bridge(self):
+        beat = BEATS[11]
+
+        self.play(
+            *[FadeOut(m) for m in self._baseline_tokens],
+            FadeOut(self._equivalence_labels),
+            run_time=0.6,
+        )
 
         # Simple tree silhouette (teaser for DDTree)
         tree_lines = VGroup()
@@ -671,6 +734,7 @@ class DFlashVisualExplainer(NarratedScene):
             "DDTree: next episode",
             font_size=16, color=TEXT_MUTED,
         ).next_to(tree_lines, DOWN, buff=0.2)
+        self._bridge = VGroup(tree_lines, tree_label)
 
         with self.narrate(beat.narration) as tracker:
             self.paced(tracker, FadeIn(tree_lines, shift=RIGHT * 0.3), fraction=0.35)
