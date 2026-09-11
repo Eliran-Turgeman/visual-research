@@ -113,6 +113,8 @@ def test_platform_remediation_is_actionable(system, command, healthy, monkeypatc
     assert command in " ".join(checks["tool:latex"]["remediation"])
     assert 'python -m pip install -e ".[voiceover-gtts]"' in " ".join(checks["module:gtts"]["remediation"])
     assert "imageio-ffmpeg" in " ".join(checks["ffmpeg"]["remediation"])
+    if system == "Linux":
+        assert "python3-dev" in " ".join(checks["module:manim"]["remediation"])
 
 
 def test_unknown_platform_has_honest_generic_guidance():

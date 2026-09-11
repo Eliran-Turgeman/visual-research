@@ -75,7 +75,7 @@ def installation_guidance(kind: str, system: str) -> list[str]:
             "python": ["uv python install 3.12"],
             "native": [
                 "Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y "
-                "build-essential pkg-config libcairo2-dev libpango1.0-dev",
+                "build-essential python3-dev pkg-config libcairo2-dev libpango1.0-dev",
             ],
             "ffmpeg": ["Debian/Ubuntu: sudo apt-get install -y ffmpeg"],
             "tex": [
