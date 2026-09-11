@@ -63,6 +63,11 @@ Missing source, timeline, or visual-event evidence is recorded in
 `omitted_checks`, not counted as a passed check. Source-content SHA-256 checks
 normalize CRLF to LF over UTF-8; the bound output artifact's contract/timeline
 hashes instead identify the exact raw parsed bytes.
+The regression tests in `tests\test_teaching.py` check current local source
+digests for all six supplied episode contracts; unreadable or changed files
+fail without falling back to Git history. Review intentional source changes
+before updating the affected contract digests and expectations. Static AST
+narration mappings do not prove runtime narration order or completeness.
 Unresolved source support also produces warnings and `claim_support` omissions.
 Complete beat mapping must never turn an unsupported claim into verified
 evidence. Use the current source-aligned contracts, not resolved warnings from
