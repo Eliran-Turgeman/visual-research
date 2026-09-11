@@ -113,6 +113,16 @@ Other distributions/architectures may need their equivalent native packages.
   --profile draft --provider none --output-dir media\runs --run-id minimal-draft-01
 ```
 
+If PowerShell's execution policy blocks `.ps1` files, use the shared Python
+entrypoints instead; no policy change is needed. With a supported Python
+available as `python`:
+
+```powershell
+python scripts\setup.py
+.\.venv\Scripts\python.exe scripts\render.py examples\minimal\scene.py MinimalExplainer `
+  --profile draft --provider none --output-dir media\runs --run-id minimal-draft-01
+```
+
 **macOS/Linux — one setup command, then the same render:**
 
 ```bash
