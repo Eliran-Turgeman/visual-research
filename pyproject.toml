@@ -49,3 +49,6 @@ include = ["manim_lib*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "scene_integration: executes real Manim scenes with silent narration (requires native rendering dependencies)",
+]
