@@ -130,13 +130,14 @@ def test_combined_episode_mapping_rejects_current_scene_drift(monkeypatch, forbi
     assert "Review the current file" in message
 
 
+@pytest.mark.parametrize("episode", EPISODES)
 @pytest.mark.parametrize("failure", [
     FileNotFoundError("file missing"),
     PermissionError("read denied"),
     UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid UTF-8"),
 ], ids=["missing", "permission-denied", "invalid-utf8"])
-def test_current_source_rejects_unreadable_files(monkeypatch, forbid_source_subprocesses, failure):
-    source = next(s for s in contract("ddtree_dflash")["sources"] if s["id"] == "scene")
+def test_current_source_rejects_unreadable_files(monkeypatch, forbid_source_subprocesses, episode, failure):
+    source = next(s for s in contract(episode)["sources"] if "://" not in s["ref"])
     path = ROOT / source["ref"]
     read_text = Path.read_text
 
@@ -147,7 +148,7 @@ def test_current_source_rejects_unreadable_files(monkeypatch, forbid_source_subp
 
     monkeypatch.setattr(Path, "read_text", read_unavailable)
     with pytest.raises(AssertionError, match="Cannot read current source") as error:
-        current_source(source)
+        test_current_local_sources_match_contract(episode, forbid_source_subprocesses)
     assert source["ref"] in str(error.value)
     assert "Restore readable UTF-8 source" in str(error.value)
     assert error.value.__cause__ is failure
