@@ -87,6 +87,38 @@ def test_collects_all_independent_errors_and_redacts_exceptions(healthy, monkeyp
     assert captured.out == captured.err == ""
 
 
+@pytest.mark.parametrize("error", (p.RenderError, OSError, ImportError))
+def test_expected_prerequisite_failures_remain_sanitized_json(error, healthy, monkeypatch, capsys):
+    def fail(*args, **kwargs):
+        raise error("SECRET-prerequisite-details")
+
+    monkeypatch.setattr(p, "check_module", fail)
+    assert d.main(["--json"]) == 1
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert not report["ok"]
+    assert by_id(report)["module:manim"]["status"] == "error"
+    assert by_id(report)["module:av"]["status"] == "error"
+    assert "SECRET" not in captured.out
+    assert not captured.err
+
+
+@pytest.mark.parametrize("error", (TypeError, AttributeError, AssertionError, ValueError, RuntimeError))
+def test_unexpected_programming_errors_are_not_swallowed(error, healthy, monkeypatch, capsys):
+    bug = error("programming-error")
+
+    def fail(*args, **kwargs):
+        print("SECRET-import-output")
+        raise bug
+
+    monkeypatch.setattr(p, "check_module", fail)
+    with pytest.raises(error) as captured:
+        d.diagnose(environ={})
+    assert captured.value is bug
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
 @pytest.mark.parametrize("version,supported", [
     ((3, 10, 99), False), ((3, 11, 0), True), ((3, 12, 0), True),
     ((3, 13, 9), True), ((3, 14, 0), False), ((4, 0, 0), False),

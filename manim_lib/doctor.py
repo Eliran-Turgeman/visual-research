@@ -115,7 +115,11 @@ def diagnose(
     environ: dict | None = None,
     system: str | None = None,
 ) -> dict:
-    """Collect independent failures instead of stopping at the first prerequisite."""
+    """Collect prerequisite failures; unexpected programming errors propagate.
+
+    Filesystem probes and optional native loaders can raise OS/import errors
+    before a production helper has normalized them to RenderError.
+    """
     env = os.environ if environ is None else environ
     system = platform.system() if system is None else system
     checks = []
@@ -128,7 +132,7 @@ def diagnose(
             # Some fallback resolvers warn; never include their output or exceptions.
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 value = action()
-        except Exception:
+        except (production.RenderError, OSError, ImportError):
             checks.append({
                 "id": identifier, "status": "error", "message": failure,
                 "remediation": remediation,
