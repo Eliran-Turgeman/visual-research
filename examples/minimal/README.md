@@ -5,6 +5,11 @@ tokens. It demonstrates progressive construction, semantic token components,
 an in-place state transformation, and narration blocks synchronized with their
 visual actions.
 
+First follow the [root quick start](../../README.md#quick-start) to install
+native prerequisites and run the platform's setup wrapper. The commands below
+automatically select the resulting `.venv`; no activation, API keys, or LaTeX
+are needed for this `Text`-based silent example.
+
 The scene uses `NarratedScene` and records three teaching beats (`context`,
 `draft-proposals`, `verification`) with corresponding visual events. From the
 repository root, make the managed draft settings explicit:
@@ -25,7 +30,10 @@ Credentials alone must not select paid narration in managed wrappers.
 The run preserves `video.mp4`, `timeline.json`, and `manifest.json` under
 `media\runs\minimal-draft-01\`. Choose a fresh run ID each time.
 
-For narrated production, configure the OpenRouter key in the process, then:
+For narrated production, install the optional dependencies with
+`.\scripts\setup.ps1 --provider openrouter` (or
+`./scripts/setup.sh --provider openrouter`), configure the OpenRouter key in
+the process, then:
 
 ```powershell
 .\scripts\render.ps1 examples\minimal\scene.py MinimalExplainer `
@@ -43,7 +51,7 @@ Direct Manim remains available without a managed manifest:
 
 ```powershell
 $env:MANIM_TTS_PROVIDER = "none"
-python -m manim -ql examples\minimal\scene.py MinimalExplainer
+.\.venv\Scripts\python.exe -m manim -ql examples\minimal\scene.py MinimalExplainer
 ```
 
 This is a component/narration example, not a complete treatment of speculative

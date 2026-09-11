@@ -1,0 +1,143 @@
+name: Installation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lock:
+    name: Lock consistency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.9"
+          enable-cache: false
+      - run: uv lock --check
+
+  fresh-install:
+    name: ${{ matrix.os }} / ${{ matrix.installer }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        installer: [uv, pip]
+        python: ["3.12"]
+        include:
+          - os: ubuntu-24.04
+            installer: uv
+            python: "3.11"
+          - os: ubuntu-24.04
+            installer: uv
+            python: "3.13"
+    env:
+      PIP_NO_CACHE_DIR: "1"
+      UV_NO_CACHE: "1"
+      UV_PYTHON_DOWNLOADS: never
+      MANIM_TTS_PROVIDER: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: python
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        if: matrix.installer == 'uv'
+        with:
+          version: "0.9.9"
+          enable-cache: false
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential python3-dev libcairo2-dev libpango1.0-dev pkg-config fonts-dejavu-core
+      - name: Install macOS native prerequisites
+        if: runner.os == 'macOS'
+        run: |
+          xcode-select -p
+          brew install cairo pango pkg-config
+      - name: Set up and diagnose (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SETUP_PYTHON: ${{ steps.python.outputs.python-path }}
+          INSTALLER: ${{ matrix.installer }}
+        run: |
+          if (Test-Path .venv) { throw "Expected a fresh environment" }
+          & .\scripts\setup.ps1 --installer $env:INSTALLER --python $env:SETUP_PYTHON --provider none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\.venv\Scripts\python.exe scripts\doctor.py --provider none --scene tests\fixtures\installation_smoke.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Set up and diagnose (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          SETUP_PYTHON: ${{ steps.python.outputs.python-path }}
+          INSTALLER: ${{ matrix.installer }}
+        run: |
+          test ! -e .venv
+          ./scripts/setup.sh --installer "$INSTALLER" --python "$SETUP_PYTHON" --provider none
+          .venv/bin/python scripts/doctor.py --provider none --scene tests/fixtures/installation_smoke.py
+      - name: Managed silent render (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & .\scripts\render.ps1 tests\fixtures\installation_smoke.py InstallationSmoke --profile draft --provider none --output-dir media\installation --run-id install-smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\.venv\Scripts\python.exe tests\verify_installation_smoke.py media\installation\install-smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Managed silent render (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./scripts/render.sh tests/fixtures/installation_smoke.py InstallationSmoke --profile draft --provider none --output-dir media/installation --run-id install-smoke
+          .venv/bin/python tests/verify_installation_smoke.py media/installation/install-smoke
+      - name: Setup must not rewrite the lock
+        run: git diff --exit-code -- pyproject.toml uv.lock .python-version
+
+  installation-tests:
+    name: Offline installation tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: python
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.9"
+          enable-cache: false
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential python3-dev libcairo2-dev libpango1.0-dev pkg-config fonts-dejavu-core
+      - name: Install dev dependencies and run focused offline tests
+        env:
+          SETUP_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          ./scripts/setup.sh --installer uv --python "$SETUP_PYTHON" --provider none --dev
+          .venv/bin/python -m pytest -q --basetemp .pytest-tmp tests/test_dependencies.py tests/test_installation_smoke.py tests/test_doctor.py tests/test_setup.py
