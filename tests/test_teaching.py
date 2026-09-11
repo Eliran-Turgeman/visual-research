@@ -370,6 +370,17 @@ def test_repaired_dflash_target_conditionals_and_greedy_output_are_independently
     assert "works" not in result["actual"]["emitted"]
 
 
+def test_storyboard_loading_restores_legacy_import_state(episode_module, monkeypatch):
+    saved = {name: object() for name in ("storyboard", "algorithm")}
+    for name, module in saved.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    path_before = sys.path[:]
+    storyboard = episode_module("ddtree_visual", "storyboard")
+    assert len(storyboard.PREFIXES) == storyboard.NODE_BUDGET
+    assert sys.path == path_before
+    assert all(sys.modules[name] is module for name, module in saved.items())
+
+
 def test_flow_contract_keeps_block_drafting_and_latency_qualifiers():
     document = contract("speculative_decoding_flow")
     texts = [beat["narration"]["text"] for beat in document["beats"]]
@@ -815,11 +826,11 @@ def test_canonical_event_contract_rejects_missing_or_wrong_transition(episode):
     ("speculative_decoding_timeline", "SpeculativeDecodingTimeline"),
 ])
 def test_canonical_events_follow_real_completed_state_without_changing_timing(
-    monkeypatch, tmp_path, episode, class_name,
+    monkeypatch, tmp_path, episode, class_name, silent_scene, episode_module,
 ):
     from manim import tempconfig
 
-    module = importlib.import_module(f"examples.{episode}.scene")
+    module = episode_module(episode)
     scene_class = getattr(module, class_name)
     document = contract(episode)
     assert list(module.BEAT_IDS) == [beat["id"] for beat in document["beats"]]
