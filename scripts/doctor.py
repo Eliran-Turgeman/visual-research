@@ -1,11 +1,10 @@
 """Run the installation doctor without importing Manim-dependent package exports."""
 
 from pathlib import Path
-import runpy
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from manim_lib.doctor import main
 
 if __name__ == "__main__":
-    runpy.run_path(
-        str(Path(__file__).resolve().parents[1] / "manim_lib" / "doctor.py"),
-        run_name="__main__",
-    )
+    raise SystemExit(main())

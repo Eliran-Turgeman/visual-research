@@ -1,33 +1,42 @@
 """Offline contracts and independent semantic oracles, not render acceptance.
 
-Core checks avoid scene/provider imports. Canonical event integration tests
-add silent dry renders and inspect actual state at each recorded transition.
+Core checks avoid scene/provider imports. Tests marked scene_integration execute
+current scenes with silent dry renders and compare their emitted timelines.
+Canonical event integrations also inspect state at each recorded transition.
 """
 
-import ast
+from contextlib import contextmanager
 import copy
 from fractions import Fraction
 import hashlib
 import importlib.util
 import itertools
 import json
+import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import uuid
 
 import pytest
 
+from manim_lib import teaching
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("teaching_under_test", ROOT / "manim_lib" / "teaching.py")
-teaching = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(teaching)
 CORPUS = teaching.load_contract(ROOT / "tests" / "fixtures" / "teaching" / "regressions.json")
 EPISODES = (
     "ddtree_full", "dflash_visual", "ddtree_visual", "ddtree_dflash",
     "speculative_decoding_timeline", "speculative_decoding_flow",
 )
+SCENE_CLASSES = {
+    "ddtree_full": "DDTreeFullExplainer",
+    "dflash_visual": "DFlashVisualExplainer",
+    "ddtree_visual": "DDTreeVisualExplainer",
+    "ddtree_dflash": "DDTreeDFlashExplainer",
+    "speculative_decoding_timeline": "SpeculativeDecodingTimeline",
+    "speculative_decoding_flow": "SpeculativeDecodingFlow",
+}
 
 
 def contract(episode="ddtree_full"):
@@ -82,53 +91,256 @@ def test_public_contracts_validate_without_certifying_comprehension(episode):
     json.dumps(report, allow_nan=False)
 
 
-def pinned_source(source):
-    """Use the working file when current, otherwise its local committed snapshot.
-
-    Sibling fixes are integrated separately; this never imports their code or
-    reads another worktree. CLI --check-sources separately checks current files.
-    """
-    text = (ROOT / source["ref"]).read_text(encoding="utf-8")
-    if teaching.text_digest(text) != source["sha256"]:
-        ref = source["ref"].replace("\\", "/")
-        text = subprocess.check_output(
-            ["git", "show", f"{source['revision']}:{ref}"], cwd=ROOT,
-        ).decode("utf-8")
-    assert teaching.text_digest(text) == source["sha256"]
+def current_source(source):
+    """Read the current local source and fail on drift; never substitute history."""
+    try:
+        text = (ROOT / source["ref"]).read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise AssertionError(
+            f"Cannot read current source {source['ref']}: {error}. "
+            "Restore readable UTF-8 source or correct its teaching.json reference."
+        ) from error
+    digest = teaching.text_digest(text)
+    assert digest == source["sha256"], (
+        f"Current source drift for {source['ref']}: expected SHA-256 {source['sha256']}, got {digest}. "
+        "Review the current file and update its teaching.json source digest and affected "
+        "expectations only if the change is intentional."
+    )
     return text
 
 
-def literal_assignment(path_or_text, name):
-    module = ast.parse(path_or_text.read_text(encoding="utf-8") if isinstance(path_or_text, Path) else path_or_text)
-    for node in module.body:
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return node.value
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
-            return node.value
-    raise AssertionError(f"Missing literal assignment {name}")
+def current_source_texts(document):
+    return {s["id"]: current_source(s) for s in document["sources"] if "://" not in s["ref"]}
 
 
-@pytest.mark.parametrize("episode", ("ddtree_full", "dflash_visual", "ddtree_visual", "speculative_decoding_timeline"))
-def test_pinned_narration_mapping_is_not_invented(episode):
+@pytest.fixture
+def episode_module(monkeypatch):
+    """Execute fresh local modules without leaking legacy sibling imports."""
+    def load(episode, filename="scene"):
+        current_source_texts(contract(episode))
+        path = ROOT / "examples" / episode / f"{filename}.py"
+        name = f"teaching_{episode}_{filename}_{uuid.uuid4().hex}"
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)
+        # Some public Manim entry points still use unqualified sibling imports.
+        names = ("storyboard", "algorithm")
+        saved = {key: sys.modules.pop(key) for key in names if key in sys.modules}
+        try:
+            with monkeypatch.context() as imports:
+                imports.setattr(sys, "path", [str(ROOT), str(path.parent), *sys.path])
+                spec.loader.exec_module(module)
+        finally:
+            for key in names:
+                sys.modules.pop(key, None)
+            sys.modules.update(saved)
+        return module
+    return load
+
+
+@pytest.fixture
+def silent_scene(monkeypatch, tmp_path):
+    """Real Manim execution and NarratedScene recording, without media encoding."""
+    for name in list(os.environ):
+        if name.startswith("MANIM_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("MANIM_TTS_PROVIDER", "none")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Silent teaching integrations must not use network or speech services")
+
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
+    from manim import tempconfig
+    from manim_lib.narrated_scene import NarratedScene
+
+    monkeypatch.setattr(NarratedScene, "add_sound", forbidden)
+    if hasattr(NarratedScene, "set_speech_service"):
+        monkeypatch.setattr(NarratedScene, "set_speech_service", forbidden)
+
+    def create(scene_class):
+        run_id = f"offline-teaching-{uuid.uuid4().hex}"
+        monkeypatch.setenv("MANIM_RUN_ID", run_id)
+        monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / f"{run_id}.json"))
+        return scene_class()
+
+    with tempconfig({"dry_run": True, "skip_animations": True, "disable_caching": True,
+                     "quality": "low_quality",
+                     "media_dir": str(tmp_path / "media"), "verbosity": "ERROR"}):
+        yield create
+
+
+def render_timeline(scene):
+    scene.render()
+    assert scene._tts_settings["provider"] == "none"
+    assert not scene._voiceover_enabled and not scene._external_voiceover
+    timeline = teaching.load_contract(scene.review_timeline_path)
+    assert timeline["blocks"] == scene._review_blocks
+    assert timeline["scene_duration"] == scene.time
+    return timeline
+
+
+@pytest.fixture
+def forbid_source_subprocesses(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Current-source checks must not run Git or other subprocesses")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+
+
+@pytest.mark.parametrize("change", ["\n# current source changed\n", "\ndef invalid("],
+                         ids=["valid-python-drift", "invalid-python-drift"])
+@pytest.mark.parametrize("episode", EPISODES)
+def test_current_source_rejects_drift(monkeypatch, forbid_source_subprocesses, episode, change):
     document = contract(episode)
-    for beat in document["beats"]:
-        narration = beat["narration"]
-        source = next(s for s in document["sources"] if s["id"] == narration["source"])
-        text_source = pinned_source(source)
-        if narration["locator"].startswith("BEATS["):
-            call = literal_assignment(text_source, "BEATS").elts[narration["index"]]
-            text = next((kw.value for kw in call.keywords if kw.arg == "narration"), None)
-            if text is None:
-                text = call.args[2]
-        else:
-            text = literal_assignment(text_source, "NARRATION").elts[narration["index"]]
-        assert ast.literal_eval(text) == narration["text"]
+    source = next(s for s in document["sources"] if "://" not in s["ref"])
+    path = ROOT / source["ref"]
+    read_text = Path.read_text
+    changed = read_text(path, encoding="utf-8") + change
+
+    def read_changed(current_path, *args, **kwargs):
+        return changed if current_path == path else read_text(current_path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_changed)
+    with pytest.raises(AssertionError, match="Current source drift") as error:
+        current_source_texts(document)
+    message = str(error.value)
+    assert source["ref"] in message
+    assert source["sha256"] in message
+    assert teaching.text_digest(changed) in message
+    assert "Review the current file" in message
+
+
+@pytest.mark.parametrize("episode", EPISODES)
+@pytest.mark.parametrize("failure", [
+    FileNotFoundError("file missing"),
+    PermissionError("read denied"),
+    UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid UTF-8"),
+], ids=["missing", "permission-denied", "invalid-utf8"])
+def test_current_source_rejects_unreadable_files(monkeypatch, forbid_source_subprocesses, episode, failure):
+    source = next(s for s in contract(episode)["sources"] if "://" not in s["ref"])
+    path = ROOT / source["ref"]
+    read_text = Path.read_text
+
+    def read_unavailable(current_path, *args, **kwargs):
+        if current_path == path:
+            raise failure
+        return read_text(current_path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_unavailable)
+    with pytest.raises(AssertionError, match="Cannot read current source") as error:
+        test_current_local_sources_match_contract(episode, forbid_source_subprocesses)
+    assert source["ref"] in str(error.value)
+    assert "Restore readable UTF-8 source" in str(error.value)
+    assert error.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_current_source_accepts_checkout_line_endings(monkeypatch, forbid_source_subprocesses, newline):
+    source = next(s for s in contract("ddtree_dflash")["sources"] if s["id"] == "scene")
+    path = ROOT / source["ref"]
+    read_text = Path.read_text
+    text = read_text(path, encoding="utf-8").replace("\r\n", "\n").replace("\n", newline)
+
+    def read_normalized(current_path, *args, **kwargs):
+        return text if current_path == path else read_text(current_path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_normalized)
+    assert current_source(source) == text
+
+
+@pytest.mark.scene_integration
+@pytest.mark.parametrize("episode", EPISODES)
+def test_current_scene_emitted_narration_matches_contract(episode, episode_module, silent_scene):
+    document = contract(episode)
+    module = episode_module(episode)
+    timeline = render_timeline(silent_scene(getattr(module, SCENE_CLASSES[episode])))
+    report = teaching.validate_contract(document, source_texts=current_source_texts(document), timeline=timeline)
+    assert report["valid"], report["errors"]
+    assert document["timeline_mapping"] == "complete"
+    omitted = {check["check"] for check in report["omitted_checks"]}
+    assert not {"timeline_comparison", "complete_narration_coverage"} & omitted
+    assert [block["text"] for block in timeline["blocks"]] == [
+        beat["narration"]["text"] for beat in document["beats"]
+    ]
+    assert report["evidence"]["production_acceptance"] == "not_assessed"
+
+
+@pytest.mark.scene_integration
+@pytest.mark.parametrize("change,code", [
+    ("text", "narration_drift"), ("order", "narration_drift"),
+    ("extra", "timeline_count"), ("beat", "beat_drift"),
+])
+def test_executed_narration_drift_fails_with_unchanged_contract(
+    episode_module, silent_scene, monkeypatch, change, code,
+):
+    episode = "speculative_decoding_timeline"
+    document = contract(episode)
+    before = copy.deepcopy(document)
+    module = episode_module(episode)
+    scene_class = getattr(module, SCENE_CLASSES[episode])
+    if change == "text":
+        monkeypatch.setattr(module, "NARRATION", ("Incorrect runtime narration.", *module.NARRATION[1:]))
+    elif change == "order":
+        texts = list(module.NARRATION)
+        texts[0], texts[1] = texts[1], texts[0]
+        monkeypatch.setattr(module, "NARRATION", texts)
+    elif change == "beat":
+        monkeypatch.setattr(module, "BEAT_IDS", ("wrong-runtime-beat", *module.BEAT_IDS[1:]))
+    else:
+        construct = scene_class.construct
+
+        def with_extra_block(self):
+            construct(self)
+            with self.narrate("An extra block emitted by the running scene."):
+                self.wait(0.1)
+
+        monkeypatch.setattr(scene_class, "construct", with_extra_block)
+
+    timeline = render_timeline(silent_scene(scene_class))
+    report = teaching.validate_contract(document, source_texts=current_source_texts(document), timeline=timeline)
+    assert not report["valid"]
+    assert code in codes(report), report["errors"]
+    assert "source_drift" not in codes(report)
+    assert contract(episode) == document == before
+
+
+@pytest.mark.scene_integration
+def test_runtime_mapping_accepts_helper_loop_and_fstring_refactor(
+    episode_module, silent_scene, monkeypatch,
+):
+    episode = "speculative_decoding_timeline"
+    document = contract(episode)
+    module = episode_module(episode)
+    scene_class = getattr(module, SCENE_CLASSES[episode])
+    baseline = render_timeline(silent_scene(scene_class))
+    narrate = scene_class.narrate
+
+    def through_helper(text):
+        words = []
+        for word in text.split(" "):
+            words.append(f"{word}")
+        return " ".join(words)
+
+    @contextmanager
+    def refactored_narrate(self, text, *, beat_id=None):
+        with narrate(self, through_helper(text), beat_id=beat_id) as tracker:
+            yield tracker
+
+    monkeypatch.setattr(scene_class, "narrate", refactored_narrate)
+    refactored = render_timeline(silent_scene(scene_class))
+    for timeline in (baseline, refactored):
+        report = teaching.validate_contract(document, timeline=timeline)
+        assert report["valid"], report["errors"]
+    assert refactored["blocks"] == baseline["blocks"]
+    assert refactored["events"] == baseline["events"]
+    assert refactored["scene_duration"] == baseline["scene_duration"]
 
 
 @pytest.mark.parametrize("episode", ("dflash_visual", "ddtree_visual", "ddtree_dflash"))
-def test_repaired_episode_contracts_bind_committed_sources_without_legacy_exclusions(episode):
+def test_episode_contracts_bind_current_sources_without_legacy_exclusions(episode):
     document = contract(episode)
-    texts = {s["id"]: pinned_source(s) for s in document["sources"] if "://" not in s["ref"]}
+    texts = {s["id"]: current_source(s) for s in document["sources"] if "://" not in s["ref"]}
     report = teaching.validate_contract(document, source_texts=texts, timeline=timeline_for(document))
     assert report["valid"], report["errors"]
     assert document["timeline_mapping"] == "complete"
@@ -136,10 +348,9 @@ def test_repaired_episode_contracts_bind_committed_sources_without_legacy_exclus
     assert not any(check["check"] == "complete_narration_coverage" for check in report["omitted_checks"])
 
 
-def test_repaired_dflash_target_conditionals_and_greedy_output_are_independently_checked():
+def test_repaired_dflash_target_conditionals_and_greedy_output_are_independently_checked(episode_module):
     document = contract("dflash_visual")
-    source = next(s for s in document["sources"] if s["id"] == "storyboard")
-    actual = ast.literal_eval(literal_assignment(pinned_source(source), "TARGET_CONDITIONALS"))
+    actual = episode_module("dflash_visual", "storyboard").TARGET_CONDITIONALS
     check = document["worked_examples"][1]["checks"][0]
     supplied = {tuple(row["prefix"]): {k: Fraction(v) for k, v in row["distribution"].items()}
                 for row in check["input"]["conditionals"]}
@@ -157,58 +368,20 @@ def test_repaired_dflash_target_conditionals_and_greedy_output_are_independently
     assert "works" not in result["actual"]["emitted"]
 
 
-def test_combined_episode_maps_all_actual_narration_including_loop_selections():
-    document = contract("ddtree_dflash")
-    source = next(s for s in document["sources"] if s["id"] == "scene")
-    module = ast.parse(pinned_source(source))
-    cls = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == "DDTreeDFlashExplainer")
-    methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
-    order = [node.value.func.attr for node in methods["construct"].body
-             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
-             and isinstance(node.value.func, ast.Attribute)]
-    assert order[-1] == "_finalize"
-    texts = []
-    for name in order[:-1]:
-        method = methods[name]
-        calls = sorted(
-            (n for n in ast.walk(method) if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Attribute) and n.func.attr == "narrate"),
-            key=lambda n: n.lineno,
-        )
-        if name == "best_first_example":
-            selection_texts = next(
-                ast.literal_eval(n.value) for n in ast.walk(method)
-                if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "narration" for t in n.targets)
-            )
-            texts.extend([ast.literal_eval(calls[0].args[0]), *selection_texts.values(),
-                          ast.literal_eval(calls[-1].args[0])])
-        else:
-            texts.extend(ast.literal_eval(call.args[0]) for call in calls)
-    assert len(texts) == len(document["beats"]) == 30
-    assert texts == [beat["narration"]["text"] for beat in document["beats"]]
+def test_storyboard_loading_restores_legacy_import_state(episode_module, monkeypatch):
+    saved = {name: object() for name in ("storyboard", "algorithm")}
+    for name, module in saved.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    path_before = sys.path[:]
+    storyboard = episode_module("ddtree_visual", "storyboard")
+    assert len(storyboard.PREFIXES) == storyboard.NODE_BUDGET
+    assert sys.path == path_before
+    assert all(sys.modules[name] is module for name, module in saved.items())
 
 
-def test_flow_maps_repaired_block_drafting_and_latency_qualifiers():
+def test_flow_contract_keeps_block_drafting_and_latency_qualifiers():
     document = contract("speculative_decoding_flow")
-    source = next(s for s in document["sources"] if s["id"] == "scene")
-    module = ast.parse(pinned_source(source))
-    cls = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == "SpeculativeDecodingFlow")
-    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "construct")
-    words = next(ast.literal_eval(n.value) for n in ast.walk(method)
-                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "token_words" for t in n.targets))
-    calls = sorted((n for n in ast.walk(method) if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute) and n.func.attr == "narrate"), key=lambda n: n.lineno)
-    texts = []
-    for call in calls:
-        value = call.args[0]
-        if isinstance(value, ast.JoinedStr):
-            for index, word in enumerate(words, start=1):
-                fields = {"index": index, "word": word}
-                texts.append("".join(part.value if isinstance(part, ast.Constant) else str(fields[part.value.id])
-                                     for part in value.values))
-        else:
-            texts.append(ast.literal_eval(value))
-    assert texts == [beat["narration"]["text"] for beat in document["beats"]]
+    texts = [beat["narration"]["text"] for beat in document["beats"]]
     assert len(texts) == 8
     report = teaching.validate_contract(document, timeline=timeline_for(document))
     assert report["valid"]
@@ -256,11 +429,10 @@ def test_partial_mapping_is_explicitly_omitted_not_counted_as_passed():
     assert any(check["check"] == "complete_narration_coverage" for check in report["omitted_checks"])
 
 
-@pytest.mark.parametrize("episode", ("ddtree_full", "speculative_decoding_timeline"))
-def test_pinned_canonical_local_sources_match(episode):
+@pytest.mark.parametrize("episode", EPISODES)
+def test_current_local_sources_match_contract(episode, forbid_source_subprocesses):
     document = contract(episode)
-    texts = {s["id"]: (ROOT / s["ref"]).read_text(encoding="utf-8")
-             for s in document["sources"] if "://" not in s["ref"]}
+    texts = current_source_texts(document)
     report = teaching.validate_contract(document, source_texts=texts)
     assert report["valid"], report["errors"]
     assert report["evidence"]["source_content"] == "supplied"
@@ -646,16 +818,17 @@ def test_canonical_event_contract_rejects_missing_or_wrong_transition(episode):
     assert "event_drift" in codes(teaching.validate_contract(document, timeline=original))
 
 
+@pytest.mark.scene_integration
 @pytest.mark.parametrize("episode,class_name", [
     ("ddtree_full", "DDTreeFullExplainer"),
     ("speculative_decoding_timeline", "SpeculativeDecodingTimeline"),
 ])
 def test_canonical_events_follow_real_completed_state_without_changing_timing(
-    monkeypatch, tmp_path, episode, class_name,
+    monkeypatch, tmp_path, episode, class_name, silent_scene, episode_module,
 ):
     from manim import tempconfig
 
-    module = importlib.import_module(f"examples.{episode}.scene")
+    module = episode_module(episode)
     scene_class = getattr(module, class_name)
     document = contract(episode)
     assert list(module.BEAT_IDS) == [beat["id"] for beat in document["beats"]]
@@ -665,7 +838,8 @@ def test_canonical_events_follow_real_completed_state_without_changing_timing(
     monkeypatch.setenv("MANIM_RUN_ID", f"offline-events-{episode}")
     monkeypatch.setenv("MANIM_TIMELINE_PATH", str(tmp_path / "events.json"))
 
-    with tempconfig({"dry_run": True, "skip_animations": True, "quality": "low_quality",
+    with tempconfig({"dry_run": True, "skip_animations": True, "disable_caching": True,
+                     "quality": "low_quality",
                      "media_dir": str(tmp_path / "media"), "verbosity": "ERROR"}):
         scene = scene_class()
         record = scene.record_visual_event

@@ -24,17 +24,14 @@ media existence nor human comprehension. --json stdout remains the raw report.
 
 import argparse
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# The existing package __init__ imports Manim. Load this stdlib-only module
-# directly so the validation CLI does not require graphics/audio dependencies.
-_spec = importlib.util.spec_from_file_location("teaching_contract", ROOT / "manim_lib" / "teaching.py")
-teaching = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(teaching)
+sys.path.insert(0, str(ROOT))
+from manim_lib import teaching
 
 
 def main(argv=None):

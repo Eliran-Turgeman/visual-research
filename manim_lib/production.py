@@ -38,6 +38,7 @@ Public building blocks: ``resolve_settings``, ``preflight``, ``find_ffmpeg``,
 ``provider_cache_dir``, ``render`` and ``main``. No schema
 framework is required. ``validate_timeline`` accepts legacy timelines unless a
 run ID is explicitly required; managed renders always require it. Managed scenes
+share the structural and exact numeric policy in ``manim_lib.timeline`` and
 must use NarratedScene (or emit the same run-bound timeline protocol). For old
 scenes without a timeline, direct ``python -m manim -ql SCENE.py SceneName``
 remains available, outside this manifest workflow.
@@ -72,6 +73,8 @@ import subprocess
 import sys
 import time
 import uuid
+
+from manim_lib.timeline import TimelineError, nonblank_text, parse_timeline
 
 
 PROVIDERS = ("none", "openrouter", "gtts", "external-gtts", "openai", "azure")
@@ -335,51 +338,21 @@ def _positive_number(value, label: str, *, zero: bool = False) -> float:
 
 
 def validate_timeline(data: object, *, run_id: str | None = None) -> dict:
-    """Validate legacy block timing plus optional events; require identity on demand."""
-    if not isinstance(data, dict):
-        raise RenderError("Timeline must be a JSON object.")
-    if run_id is not None and data.get("run_id") != run_id:
-        raise RenderError("Timeline run_id does not match this render; refusing stale timing.")
-    if type(data.get("schema_version", 1)) is not int or data.get("schema_version", 1) != 1:
-        raise RenderError("Unsupported timeline schema_version.")
-    duration = _positive_number(data.get("scene_duration"), "Timeline scene_duration")
-    if not isinstance(data.get("blocks"), list):
-        raise RenderError("Timeline blocks must be a list.")
-    previous_end = 0.0
-    for index, block in enumerate(data["blocks"]):
-        if not isinstance(block, dict) or type(block.get("index")) is not int or block["index"] != index:
-            raise RenderError("Timeline block indices must be sequential, starting at zero.")
-        start = _positive_number(block.get("start"), "Block start", zero=True)
-        end = _positive_number(block.get("end"), "Block end")
-        length = _positive_number(block.get("duration", end - start), "Block duration")
-        if start < previous_end - 1e-6 or end <= start or end > duration + 1e-6:
-            raise RenderError("Timeline blocks must be ordered, nonoverlapping and inside the scene.")
-        if abs(length - (end - start)) > 1e-6:
-            raise RenderError("Block duration must equal end minus start.")
-        if not isinstance(block.get("text"), str) or not block["text"].strip():
-            raise RenderError("Timeline block text must be nonempty.")
-        _validate_beat_id(block.get("beat_id"))
-        previous_end = end
-    events = data.get("events", [])
-    if not isinstance(events, list):
-        raise RenderError("Timeline events must be a list.")
-    previous_time = 0.0
-    for event in events:
-        if not isinstance(event, dict):
-            raise RenderError("Timeline event must be an object.")
-        event_time = _positive_number(event.get("time"), "Event time", zero=True)
-        if not previous_time <= event_time <= duration + 1e-6:
-            raise RenderError("Timeline events must be ordered and inside the scene.")
-        if not isinstance(event.get("label"), str) or not event["label"].strip():
-            raise RenderError("Visual event label must be nonempty.")
-        _validate_beat_id(event.get("beat_id"))
-        previous_time = event_time
+    """Shared structural policy; preserve the caller's original dict/extensions."""
+    try:
+        parse_timeline(data, run_id=run_id)
+    except TimelineError as exc:
+        raise RenderError(str(exc)) from exc
     return data
 
 
 def _validate_beat_id(beat_id: str | None) -> None:
-    if beat_id is not None and (not isinstance(beat_id, str) or not beat_id.strip()):
-        raise RenderError("beat_id must be a nonempty string when provided.")
+    # Narration's Python API uses None to omit the JSON field, not to emit null.
+    if beat_id is not None:
+        try:
+            nonblank_text(beat_id, "beat_id")
+        except TimelineError as exc:
+            raise RenderError(str(exc)) from exc
 
 
 def validate_media(

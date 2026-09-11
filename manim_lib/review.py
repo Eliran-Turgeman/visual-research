@@ -5,7 +5,7 @@ lazily invoke the pure teaching validator against the actual bound inputs.
 ``inspect_production`` only verifies technical evidence; it cannot judge speech,
 visual quality, correctness of a lesson, or viewer comprehension.
 
-Timing tolerances: timeline arithmetic uses 1 ms; encoded media comparisons use
+Timeline structure follows ``manim_lib.timeline``. Encoded media comparisons use
 the larger of 100 ms and two video frames (codec/container rounding). Hashes
 bind bytes, not authorship. Human review records are attestations, not signatures.
 """
@@ -22,9 +22,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from manim_lib.timeline import Timeline, TimelineError, parse_timeline
+
 
 class ReviewError(ValueError):
     """Missing, invalid, or stale evidence prevents review/acceptance."""
+
+
+class TimelineValidationError(ReviewError):
+    """The timeline does not describe a finite, ordered recorded scene."""
+
+
+def validate_timeline(data: object, *, run_id: str | None = None) -> Timeline:
+    """Adapt the shared parser to review's public exception family."""
+    try:
+        return parse_timeline(data, run_id=run_id)
+    except TimelineError as exc:
+        raise TimelineValidationError(str(exc)) from exc
 
 
 def sha256_file(path: Path) -> str:
@@ -237,8 +251,6 @@ def _verify_audio_snapshots(artifacts: dict, timeline: dict, manifest_dir: Path,
 
 def inspect_production(manifest_path: Path) -> dict:
     """Verify manifest identity, artifact hashes, timeline, durations and decode."""
-    from scripts.extract_narration_frames import validate_timeline
-
     manifest_path = manifest_path.resolve()
     manifest_reference = artifact_reference(manifest_path)
     manifest = read_json(manifest_path)
@@ -257,9 +269,7 @@ def inspect_production(manifest_path: Path) -> dict:
     video = verify_reference(artifacts.get("video"), manifest_path.parent, "video")
     timeline_path = verify_reference(artifacts.get("timeline"), manifest_path.parent, "timeline")
     timeline_document = read_json(timeline_path)
-    timeline = validate_timeline(timeline_document)
-    if timeline.run_id != run_id:
-        raise ReviewError("Timeline run_id must match manifest run_id (legacy extraction is still supported).")
+    timeline = validate_timeline(timeline_document, run_id=run_id)
     audio = _verify_audio_snapshots(artifacts, timeline_document, manifest_path.parent, timeline_path.parent)
     media = probe_media(video)
     validate_video_timing(media, timeline.scene_duration, require_audio=manifest["profile"] == "production")
@@ -503,7 +513,7 @@ def verify_acceptance(manifest_path: Path, accepted_path: Path) -> dict:
 
 def validate_frame_evidence(index_path: Path, record: dict) -> dict:
     """Require complete frame evidence for the exact current video and timeline."""
-    from scripts.extract_narration_frames import build_index, validate_timeline, verify_jpeg
+    from scripts.extract_narration_frames import build_index, verify_jpeg
 
     index = read_json(index_path)
     if index.get("run_id") != record["run_id"]:
@@ -511,7 +521,9 @@ def validate_frame_evidence(index_path: Path, record: dict) -> dict:
     for key in ("video", "timeline"):
         if index.get("artifacts", {}).get(key) != record["artifacts"][key]:
             raise ReviewError(f"Frame evidence is stale: {key} differs.")
-    timeline = validate_timeline(read_json(Path(record["artifacts"]["timeline"]["path"])))
+    timeline = validate_timeline(
+        read_json(Path(record["artifacts"]["timeline"]["path"])), run_id=record["run_id"],
+    )
     expected = build_index(
         timeline, index_path.parent / "frames", fps=record["media"]["fps"],
         media_duration=record["media"]["video_duration"],

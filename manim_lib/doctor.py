@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import importlib.metadata
-import importlib.util
 import io
 import json
 import os
@@ -35,12 +34,7 @@ import re
 import sys
 
 
-# Loading by file avoids manim_lib's eager Manim-dependent public exports.
-_spec = importlib.util.spec_from_file_location(
-    "_visual_research_production", Path(__file__).with_name("production.py")
-)
-production = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(production)
+from manim_lib import production
 
 _DISTRIBUTIONS = {
     "manim": "manim",

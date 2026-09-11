@@ -59,10 +59,37 @@ Validation checks contract structure, supplied source hashes, worked
 calculations, and timeline mappings when provided. A duration-budget excess
 produces a `duration_review` warning: explain or repair the pacing, rather than
 automatically cutting a useful explanation to satisfy a timer.
+Timeline structure uses the same installed, stdlib-only `manim_lib.timeline`
+parser as rendering and frame review; see the
+[single timeline policy](production-review.md#standalone-frame-extraction).
+An invalid structure returns a `timeline_shape`, `timeline_order`, or
+`timeline_duration` error with a precise field path before semantic comparison.
+Teaching then separately checks narration text/count, beat identities/references,
+event labels/data and exact within-beat timing. A structurally valid timeline can
+still fail those teaching checks; rounding tolerance never excuses narration drift.
+The package's visual public exports are lazy, so canonical teaching/doctor/
+accounting imports and `python -S` CLI usage do not initialize Manim or providers.
 Missing source, timeline, or visual-event evidence is recorded in
 `omitted_checks`, not counted as a passed check. Source-content SHA-256 checks
 normalize CRLF to LF over UTF-8; the bound output artifact's contract/timeline
 hashes instead identify the exact raw parsed bytes.
+The regression tests in `tests\test_teaching.py` check current local source
+digests for all six supplied episode contracts; unreadable or changed files
+fail without falling back to Git history. Review intentional source changes
+before updating the affected contract digests and expectations. The
+`scene_integration` tests execute all six current scenes with explicit provider
+`none`, Manim's silent `dry_run` / `skip_animations`, and real `NarratedScene`
+timeline recording. They compare emitted text, order, count, and supplied beat
+IDs against independently authored `teaching.json` expectations, including
+narration produced inside loops and formatted strings. No source-syntax
+interpreter or automatically regenerated expectation is used.
+
+Run `python -m pytest tests\test_teaching.py -m "not scene_integration"` for
+stdlib-only validator, source-integrity, and mathematical checks; run
+`python -m pytest tests\test_teaching.py -m scene_integration` for all runtime
+narration and canonical transition checks (requires Manim and its native
+text/math dependencies). Neither group is skipped by default. Silent execution
+does not encode video, contact speech providers, or certify audiovisual fidelity.
 Unresolved source support also produces warnings and `claim_support` omissions.
 Complete beat mapping must never turn an unsupported claim into verified
 evidence. Use the current source-aligned contracts, not resolved warnings from

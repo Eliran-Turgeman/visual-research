@@ -3,46 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
+from importlib import import_module
 import json
 import math
 import sys
 from collections.abc import Callable, Mapping
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT))
 
 
-def _load_module(name: str) -> ModuleType:
-    # Offline accounting must not initialize Manim/voiceover or pollute JSON stdout.
-    qualified = f"manim_lib.{name}"
-    if qualified in sys.modules:
-        module = sys.modules[qualified]
-        if module is None:
-            raise ImportError(f"{qualified} is unavailable")
-        return module
-    path = _ROOT / "manim_lib" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(qualified, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load {qualified}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[qualified] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(qualified, None)
-        raise
-    return module
-
-
-_metrics = _load_module("metrics")
-MetricsError = _metrics.MetricsError
-ReviewValidator = _metrics.ReviewValidator
-summarize_runs = _metrics.summarize_runs
+from manim_lib.metrics import MetricsError, ReviewValidator, summarize_runs
 
 
 def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -86,7 +60,7 @@ def _bound_validator(
 ) -> ReviewValidator:
     """Load the review owner's validator only when explicit reviews are used."""
     try:
-        verify_acceptance = _load_module("review").verify_acceptance
+        verify_acceptance = import_module("manim_lib.review").verify_acceptance
     except (ImportError, AttributeError, OSError) as exc:
         raise MetricsError(
             "Bound review validation is unavailable. Merge/install the artifact-review "

@@ -11,6 +11,7 @@ import pytest
 from manim import tempconfig
 
 from manim_lib.narrated_scene import NarratedScene
+from manim_lib.production import RenderError
 
 
 @pytest.fixture
@@ -106,6 +107,31 @@ def test_run_identity_requires_both_env_values(scene, monkeypatch):
     monkeypatch.setenv("MANIM_RUN_ID", "id")
     with pytest.raises(ValueError, match="together"):
         scene.setup()
+
+
+@pytest.mark.parametrize("change", ["empty", "null-beat", "wrong-duration"])
+def test_writer_rejects_invalid_protocol_before_publishing(scene, change):
+    if change != "empty":
+        with scene.narrate("Valid block"):
+            pass
+        if change == "null-beat":
+            scene._review_blocks[0]["beat_id"] = None
+        else:
+            scene._review_blocks[0]["duration"] += 0.01
+    with pytest.raises(RenderError, match="timeline"):
+        scene._write_review_timeline()
+    assert not scene.review_timeline_path.exists()
+
+
+def test_writer_accepts_shared_rounding_and_preserves_event_payload(scene):
+    with scene.narrate("Valid block", beat_id="intro"):
+        scene.record_visual_event("State")
+        scene._review_events[-1]["data"] = {"nested": [True, "x"]}
+    scene._review_blocks[0]["duration"] += 0.0005
+    scene._write_review_timeline()
+    document = json.loads(scene.review_timeline_path.read_text())
+    assert document["blocks"][0]["duration"] == scene._review_blocks[0]["duration"]
+    assert document["events"][0]["data"] == {"nested": [True, "x"]}
 
 
 def test_direct_scene_does_not_infer_paid_provider(scene, monkeypatch):
