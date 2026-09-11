@@ -150,8 +150,10 @@ Both setup wrappers accept the same options:
 
 For example, explicitly select pip with `.\scripts\setup.ps1 --installer pip`
 or `./scripts/setup.sh --installer pip`. Use `--help` for the complete CLI.
-Python 3.12 is the default for new environments; use `--python` to select
-3.11 or 3.13 deliberately. Setup does not install OS packages.
+Python 3.12 is recommended and pinned for uv's manual project workflow.
+Setup can reuse a compatible environment or launcher interpreter; request
+`--python 3.12` to select that version explicitly, or choose 3.11/3.13.
+Setup does not install OS packages.
 
 For a manual uv workflow, `uv sync --locked` installs the minimal environment
 from the lock; `uv lock --check` verifies that it still matches `pyproject.toml`.
