@@ -482,10 +482,33 @@ The shared palette and typography provide cohesion without forcing every
 concept into a rounded box. Shadows, inner borders, and halos are optional,
 not a substitute for scale, meaningful geometry, and causal motion.
 
+For software-decision and workflow explainers, keep three layers visibly
+distinct: structured program state, model judgment, and deterministic
+application policy. Trace one concrete record through those layers from input
+state to applied action. Show independent questions starting in parallel, but
+show dependent reasoning in sequence. Treat schema/type validity, judgment
+correctness, confidence or calibration, and application thresholds as separate
+claims. A confidence value must visibly affect routing, escalation, or another
+behavior; it is not a decorative percentage or proof of correctness.
+
+Use scene-local semantic families—records, evidence, judgments, policy gates,
+actions, and aggregates—until their meaning and operations recur. Packets
+crossing a boundary, branch selection, state replacement, aggregation, and
+parallel starts must each have distinct motion semantics. Avoid anonymous
+rounded-box flowcharts, hidden routes or ordering, screen timing presented as
+system timing, and unqualified vendor or benchmark claims.
+
 `examples/speculative_decoding_timeline/` demonstrates the approach with a
 shared-clock comparison: three serial target passes versus drafting plus one
 verification pass. A completion bracket reveals the difference in elapsed time.
 `examples/speculative_decoding_flow/` uses model blocks and token flow instead.
+
+`examples/jev_system_one_workflow/` demonstrates the decision-system vocabulary:
+`StructuredState`, typed `QuestionCard` objects, `DecisionResult`, explicit
+parallel evaluation, and deterministic policy routing. Its values are labeled
+as toy data, and it keeps schema validity separate from judgment correctness.
+`examples/decision_workflow_components/` is the corresponding silent visual
+reference for the shared components.
 
 For a complete mechanism-first episode with MAI narration, see
 `examples/ddtree_full/`: DFlash marginals, seven best-first tree selections,

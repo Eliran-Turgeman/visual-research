@@ -233,6 +233,50 @@ The anchor is automatically excluded from the fade/dim list.  Use
 - Hard-coding DDTree-specific token names in library calls.
 - Inferring tree-to-sequence ordering instead of providing an explicit map.
 
+## Software decision primitives
+
+Use the decision components when the mechanism is a software judgment rather
+than a mathematical derivation:
+
+```python
+from manim_lib import (
+    ConfidenceGate,
+    DecisionResult,
+    QuestionCard,
+    StructuredState,
+)
+
+state = StructuredState({
+    "message": ("Message", "Duplicate charge", "str"),
+    "tier": ("Tier", "plus", "str"),
+})
+question = QuestionCard.choice(
+    "route", "Choose the handling queue", ["billing", "technical"],
+)
+result = DecisionResult(
+    "route", "billing", answer_type=str, confidence=0.78,
+)
+gate = ConfidenceGate(
+    thresholds=(0.60, 0.85),
+    region_names=("abstain", "review", "automate"),
+    value=0.78,
+)
+```
+
+Keep keys explicit so the same state field, question, result, and route remain
+traceable across beats. Use `SchemaBoundary` for the declared output space,
+`DecisionAggregator` for visible application arithmetic, and
+`DecisionRouter` for one explicit branch point. Use `DataPacket` and
+`SystemNode` only when information genuinely crosses a software boundary.
+`animate_parallel_evaluation` requires matching named mappings; never infer
+parallel lanes from screen position.
+
+`CodeBlock`, `RecordTable`, and `QueueLane` cover stable program execution and
+work queues. `MetricCard`, `ComparisonScale`, and `CalibrationPlot` cover
+evidence, with provenance and honest scales kept visible. These objects do not
+replace a scene-specific mechanism: prototype new orchestration in the scene
+and promote only recurring semantic behavior.
+
 ## Anti-patterns
 
 - walls of text or PowerPoint-like slides disguised as animation;
@@ -244,7 +288,15 @@ The anchor is automatically excluded from the fade/dim list.  Use
 - tiny labels and low-contrast annotations;
 - distinctions encoded visually but never explained;
 - decorative animation with no explanatory purpose;
-- narration describing a state before it appears or after it has disappeared.
+- narration describing a state before it appears or after it has disappeared;
+- anonymous rounded-box flowcharts whose nodes and arrows have no domain
+  semantics;
+- routes, branch order, or dependencies left implicit;
+- screen animation duration presented as execution latency;
+- confidence displayed as correctness or as a percentage with no behavioral
+  consequence;
+- benchmark, calibration, or vendor claims without provenance, scope, and
+  qualification.
 
 ---
 
@@ -274,6 +326,14 @@ Reuse those exact treatments throughout the scene. A token must not look like
 a plain rectangle in one beat and a glossy card in the next. A probability
 must not alternate between text, a bar, and an arbitrary badge unless the
 transition itself explains that change of representation.
+
+For software-decision and workflow explainers, begin with scene-local semantic
+families rather than generic nodes: structured records and fields, evidence or
+questions, model judgments, deterministic policy gates, selected actions, and
+aggregates. Keep program state, judgment, and application policy in distinct
+regions or visual treatments, and follow one named record across every
+boundary. Promote a family into `manim_lib` only after its semantics recur;
+never generalize it into a graph, slide, or agent-workflow framework.
 
 Design the payoff before choosing library components. Sketch the opening,
 mechanism, and payoff compositions; then render a rough silent animation.
@@ -389,6 +449,15 @@ technical state change; the rest leaves the result stable long enough to read.
   operation instead of substituting a flash and a precomputed result;
 - use `LaggedStart` for ordered accumulation, with a restrained lag ratio;
 - use `TransformFromCopy` when a source contributes to a result;
+- update structured state in place, with changed fields visibly replacing old
+  values while stable fields retain identity;
+- move a packet across a drawn boundary only when ownership, trust, process,
+  or representation actually changes, and show its source and destination;
+- preview eligible branches, then emphasize the selected route and dim or
+  retire alternatives without implying they were executed;
+- collect contributions into a stable aggregate so the inputs remain traceable;
+- start independent questions together with synchronized motion, but serialize
+  dependent reasoning and reveal the dependency before the next start;
 - keep most state changes between roughly 0.4 and 1.2 seconds;
 - save slower motion for a genuinely important conceptual transformation;
 - add a short hold after dense changes, not after decorative entrances;
@@ -398,6 +467,12 @@ technical state change; the rest leaves the result stable long enough to read.
 At any instant, the viewer should know where to look. If three unrelated
 regions animate together, the choreography has failed even if each animation
 looks polished in isolation.
+
+Validity and decision quality need different visual states. A record may pass
+schema or type checks while its judgment is wrong; a well-calibrated confidence
+estimate is not correctness on one example; and an application threshold is a
+policy choice, not a model property. When confidence is shown, animate its
+effect on routing, escalation, abstention, or action selection.
 
 ### Stroke hierarchy
 

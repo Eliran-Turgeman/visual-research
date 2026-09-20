@@ -19,6 +19,13 @@ implementation and review; it is not a second script or an elaborate prompt.
 - **Separate rubrics:** technical correctness, production quality, and learner
   understanding. Never average away a fatal technical error with good polish.
 
+For a software-decision or workflow explainer, the worked example should trace
+one concrete record through structured program state, model judgment, and
+deterministic application policy to its final action. Record the expected
+structured output fields and types separately from whether the judgment is
+correct. Also distinguish confidence/calibration claims from the threshold or
+rule that consumes them.
+
 ## Contract files and local validation
 
 The canonical examples keep their compact versioned contract in
@@ -121,6 +128,13 @@ wall-clock speedup or a claim about target acceptance. Keep measured results,
 paper-reported results, toy values, and design choices distinct. Resolve paper
 versus implementation disagreements explicitly.
 
+Benchmark and calibration claims require the originating report or dataset,
+method, population/task scope, metric definition, sample size when available,
+version/date, and relevant limitations. A vendor page may document a product
+or reported result, but identify it as vendor-reported and do not generalize it
+beyond the evaluated setting. If provenance or calibration methodology cannot
+be established, qualify or omit the claim rather than presenting it as fact.
+
 The [DDTree episode](../../../examples/ddtree_full/README.md) records an exact
 official implementation revision and relevant code locations. Its toy
 distributions do not become benchmark results merely because they are
@@ -145,6 +159,13 @@ asking the viewer to repeat the narrator:
    children, is that token rejected as invalid? **Expected answer:** no. The
    target token is emitted; the missing child stops reuse of the precomputed
    branch and the token becomes the next anchor.
+
+For structured-output decisions, include a variation that separates valid
+shape from sound judgment: for example, a response can satisfy every required
+field and type while selecting the wrong action. For threshold routing, change
+the confidence or policy threshold and ask which route is taken and why.
+Expected answers must name the deterministic rule; confidence alone must not be
+treated as correctness.
 
 A reviewer can check that the artifact teaches enough to answer these
 questions. That is a **teaching review**, not a measured learner study. Record

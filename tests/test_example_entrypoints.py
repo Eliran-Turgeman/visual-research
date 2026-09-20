@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
         ("minimal", "MinimalExplainer", True),
         ("speculative_decoding_flow", "SpeculativeDecodingFlow", True),
         ("speculative_decoding_timeline", "SpeculativeDecodingTimeline", True),
+        ("decision_workflow_components", "DecisionWorkflowComponents", False),
         ("visual_components", "VisualComponents", False),
     ],
 )

@@ -43,6 +43,9 @@ mandatory scene template or evidence of learner improvement.
 4. **Storyboard cause and effect with narration.** Give each short beat a
    stable ID, teaching purpose, visible cause and state change, continuing
    objects, spoken text, and duration budget. Link it to the contract's claims.
+   For a software decision or workflow, separate structured program state,
+   model judgment, and deterministic application policy, then trace one
+   concrete record all the way from state to applied action.
 5. **Implement and render a silent draft.** Use semantic Manim objects where
    they fit, preserve identity, and show operands before results. Select draft
    mode explicitly; credentials alone must not trigger paid speech in wrappers.
@@ -78,6 +81,12 @@ blocker instead of silently weakening the acceptance criteria.
   intermediate values. Label toy values and conditional outcomes explicitly.
 - Make causes precede effects and keep conceptual entities spatially stable.
   A flash followed by a disconnected answer is not a computation.
+- Distinguish parallel independent questions from sequential reasoning. Show
+  concurrent starts only when no answer is required to form another question;
+  otherwise make the dependency and order explicit.
+- Keep schema/type validity, judgment correctness, calibration/confidence, and
+  application thresholds separate. Confidence must change behavior—such as
+  routing, escalation, or abstention—not decorate a result or imply correctness.
 - Keep one primary visual idea in focus. Introduce structure before detail;
   use honest common scales and include overhead in comparisons.
 - Let narration explain meaning while readable labels anchor exact values.
@@ -86,7 +95,12 @@ blocker instead of silently weakening the acceptance criteria.
   or a static slide merely to occupy the voiceover.
 - Preserve the mechanism's size and continuity. Remove excess content rather
   than shrinking the entire picture. Use new scene-local representations when
-  existing components do not express the concept.
+  existing components do not express the concept, and promote only recurring
+  semantic objects. Do not grow `manim_lib` into a generic graph, slide, or
+  agent framework.
+- Reject anonymous rounded-box flowcharts, implicit routes or ordering,
+  presentation timing that masquerades as system timing, confidence presented
+  as correctness, and vendor claims without provenance and qualification.
 - End once the promised relationship is established, without a generic recap.
 
 ## Deliverables
