@@ -1,54 +1,22 @@
-[build-system]
-requires = ["setuptools>=75"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "visual-research"
 version = "0.1.0"
-description = "Reusable guidance and Manim primitives for narrated technical explainers"
-readme = "README.md"
+description = "A small native-Manim explainer skill and nonvisual utilities"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "av>=15,<19",
     "imageio-ffmpeg>=0.6,<0.7",
     "manim>=0.19.0,<0.20",
+    "Pillow>=11,<13",
 ]
 
-[project.optional-dependencies]
-voiceover-openrouter = [
-    "manim-voiceover>=0.3.7,<0.4",
-    "openai>=2.0,<3",
-    "setuptools>=75,<81",
-]
-voiceover-gtts = [
-    "manim-voiceover[gtts]>=0.3.7,<0.4",
-    "setuptools>=75,<81",
-]
-voiceover-openai = [
-    "manim-voiceover[openai]>=0.3.7,<0.4",
-    "setuptools>=75,<81",
-]
-voiceover-azure = [
-    "manim-voiceover[azure]>=0.3.7,<0.4",
-    "setuptools>=75,<81",
-]
+[dependency-groups]
 dev = [
     "pytest>=8.3,<9",
 ]
 
 [tool.uv]
-# manim-voiceover[openai] requires OpenAI SDK 1.x; OpenRouter uses SDK 2.x.
-conflicts = [
-    [
-        { extra = "voiceover-openai" },
-        { extra = "voiceover-openrouter" },
-    ],
-]
-
-[tool.setuptools.packages.find]
-include = ["manim_lib*"]
+package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "scene_integration: executes real Manim scenes with silent narration (requires native rendering dependencies)",
-]

@@ -9,3 +9,6 @@ dist/
 *.egg-info/
 media*/
 .env
+audio/
+review/
+records/
