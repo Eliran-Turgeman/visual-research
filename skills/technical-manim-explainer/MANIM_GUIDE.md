@@ -1,7 +1,8 @@
 # Native Manim notes
 
 Consult the [official docs](https://docs.manim.community/) for the installed
-version. These are practical lessons, not a visual style guide.
+version. These are implementation notes, not a visual style guide or a substitute
+for the learning design in `SKILL.md`.
 
 ## Design and layout
 
@@ -15,6 +16,16 @@ are appropriate for meaningful geometry, shared scales, and stable anchors.
 Build at the final intended scale and check real labels, including the longest
 word or largest value. Test intermediate states as well as endpoints.
 
+Keep the current question and its evidence close enough to compare. During a
+prediction pause, retain the relevant inputs but withhold the answer. A new
+representation needs a visible correspondence: trace one node into its array
+entry or matrix row before revealing the whole mapping.
+
+Use a small persistent summary only when the next inference needs it. Remove
+finished scaffolding at a conceptual boundary; visual continuity does not mean
+permanent clutter. Check captions, labels, and diagrams together at delivery
+resolution. Pair semantic colors with words, symbols, or shapes.
+
 Use `Text` for labels and `MathTex` for mathematics when LaTeX is available.
 Keep equations exact even when using a different text renderer.
 Keep helpers local to the scene; don't build a reusable visual framework.
@@ -26,6 +37,8 @@ Keep helpers local to the scene; don't build a reusable visual framework.
   For equations, match shared terms and animate the changed operation.
 - Use `TransformFromCopy` when a source contributes while remaining present.
   Show operands before results and let the result settle long enough to read.
+  A moving number does not explain why the operation is appropriate: supply
+  the meaning through a concrete quantity, comparison, or spoken reason.
 - Highlight with an outline, pointer, or controlled stroke change. Applying
   `Indicate` to a whole filled group can turn text and background the same
   color and briefly erase the label.
@@ -44,6 +57,18 @@ Write the words and actions together. A clip and its animation starting at
 the same time is not sufficient: the operation must happen when the narrator
 explains it. Split a long clip or adjust action offsets; don't distribute
 unrelated animations into equal time slots by habit.
+
+Split speech at a question/answer boundary so a silent reasoning pause can sit
+between clips. Measure speech duration, but choose the pause from the task:
+comparing two numbers is not the same as tracing a new attention mask. Show the
+question and its evidence before starting the pause; reveal the answer after
+it. Do not stretch a decorative animation to fill thinking time.
+
+For a rough cut, use explicit scene-local minimum holds and rehearse the words.
+These are provisional timings, not a simulated listening test. For final
+speech, use actual clip timings and inspect phrase alignment. If captions are
+provided, derive their times from the same speech schedule and check their text
+against the audio; caption presence alone does not establish accessibility.
 
 Default: OpenRouter `microsoft/mai-voice-2`, voice
 `en-US-Harper:MAI-Voice-2`, speed `1.0`. Audition difficult technical names,
@@ -83,3 +108,8 @@ you want to compare. Record actual beat/transition times if useful for review.
 The frame tool samples endpoints plus requested times (or eight evenly spaced
 frames by default). Pick before/during/after important transitions yourself.
 Contact sheets supplement, not replace, complete playback and listening.
+
+Sample instructional moments too: the frame that contains a prediction's
+evidence, the reveal, and the transition into the next representation. Inspect
+at normal viewing size, not only enlarged stills. A geometry report cannot
+detect a missing reason, a premature answer, or an unreadably short hold.

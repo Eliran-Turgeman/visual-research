@@ -55,12 +55,18 @@ def check():
     assert weight("AB", q) == F(18, 100)
     tree = {p for p, _ in selected}
     expectation = F(0)
+    length_mass = [F(0) for _ in range(4)]
     for tokens in product("AB", repeat=3):
         s = "".join(tokens)
         alpha = max([0] + [d for d in range(1, 4) if s[:d] in tree])
         expectation += weight(s, q) * alpha
+        length_mass[alpha] += weight(s, q)
     assert expectation == sum(v for _, v in selected) == F(2036, 1000)
-    assert [sum(v for p, v in selected if len(p) == d) for d in (1, 2, 3)] == [F(1), F(7, 10), F(336, 1000)]
+    survival = [sum(length_mass[d:]) for d in (1, 2, 3)]
+    assert length_mass == [F(0), F(3, 10), F(364, 1000), F(336, 1000)]
+    assert survival == [F(1), F(7, 10), F(336, 1000)]
+    assert sum(survival) == expectation
+    assert [sum(v for p, v in selected if len(p) == d) for d in (1, 2, 3)] == survival
     concentrated = [[F(9, 10), F(1, 10)], [F(9, 10), F(1, 10)], [F(8, 10), F(2, 10)]]
     other, _ = heap_select(concentrated, 3)
     assert other == [("A", F(9, 10)), ("AA", F(81, 100)), ("AAA", F(648, 1000))]
@@ -74,11 +80,36 @@ def check():
     children = [{} for _ in prefixes]
     for i, p in enumerate(prefixes[1:], 1):
         children[parents[i]][p[-1]] = i
-    accepted, bonus = walk(children, ["B", "A", "B", "A", "A", "B"])
+    posterior = ["B", "A", "A", "A", "A", "B"]
+    accepted, bonus = walk(children, posterior)
     assert accepted == [0, 3, 5] and bonus == "B"
     assert [("b" if not prefixes[i] else prefixes[i][-1]) for i in accepted] == ["b", "B", "A"]
     assert walk(children, ["X"] * 6) == ([0], "X")
     assert walk(children, ["A", "A", "A", "A", "B", "B"]) == ([0, 1, 2, 4], "B")
+    # Same target root choice, different three-slot proposals: output B survives both.
+    fork = [{"A": 1, "B": 3}, {"A": 2}, {}, {}]
+    chain = [{"A": 1}, {"A": 2}, {"A": 3}, {}]
+    fork_walk, fork_bonus = walk(fork, ["B", "A", "A", "A"])
+    chain_walk, chain_bonus = walk(chain, ["B", "A", "A", "A"])
+    assert fork_walk == [0, 3] and fork_bonus == "A"
+    assert chain_walk == [0] and chain_bonus == "B"
+    fork_emitted = ["b", "A", "A", "B"][fork_walk[1]]
+    assert fork_emitted == chain_bonus == "B"
+    word_options = (("dog", "cat"), ("stayed", "slept"), ("outside", "inside"))
+    word_prefixes = {
+        p: " ".join(word_options[i]["AB".index(choice)] for i, choice in enumerate(p))
+        for _, p in exhaustive
+    }
+    word_selected = [word_prefixes[p] for p, _ in selected]
+    assert word_selected == ["dog", "dog stayed", "cat", "dog stayed outside", "cat stayed"]
+    processed_words = ["My"] + [word_prefixes[prefixes[i]].split()[-1] for i in accepted[1:]]
+    bonus_word = word_options[len(prefixes[accepted[-1]])]["AB".index(bonus)]
+    assert processed_words == ["My", "cat", "stayed"] and bonus_word == "inside"
+    word_choices = {
+        p or "b": word_options[len(p)]["AB".index(choice)] if len(p) < 3 else "today"
+        for p, choice in zip(prefixes, posterior)
+    }
+    assert word_choices["AA"] == "outside" and word_choices["BA"] == "inside"
     # Final stop-token cleanup includes first generated stop token, not later speculative outputs.
     out = ["b", "B", "STOP", "A"]
     assert out[:out.index("STOP") + 1] == ["b", "B", "STOP"]
@@ -91,9 +122,19 @@ def check():
             assert all(len(p) == 1 or p[:-1] in {t for t, _ in got} for p, _ in got)
     return {"status": "passed", "method": "Fraction arithmetic; exhaustive continuation expectation; independent heap and prefix enumeration",
             "selected": [(p, float(v)) for p, v in selected], "frontiers": frontier,
-            "expectation": float(expectation), "positions": positions, "parents": parents,
+            "expectation": float(expectation), "survival": [float(p) for p in survival],
+            "length_mass": [float(p) for p in length_mass],
+            "transfer_first_matches": [len(fork_walk) - 1, len(chain_walk) - 1],
+            "word_prefixes": word_prefixes, "word_selected": word_selected,
+            "processed_words": processed_words, "bonus_word": bonus_word,
+            "word_choices": word_choices,
+            "positions": positions, "parents": parents,
             "visibility": visibility, "accepted_indices": accepted, "bonus": bonus,
-            "checks": ["all displayed products", "all main heap states", "root outside B", "contrast", "budget sweep 1–14", "ancestor mask", "depth positions", "mismatch", "leaf", "stop retention"]}
+            "checks": ["all displayed products", "heap states", "root outside B", "contrast",
+                       "survival-sum derivation", "same-target changed-tree transfer",
+                       "word-to-prefix mapping", "same word with different histories",
+                       "budget sweep 1–14", "ancestor mask", "depth positions",
+                       "mismatch", "leaf", "stop retention"]}
 
 
 if __name__ == "__main__":

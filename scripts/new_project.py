@@ -32,6 +32,11 @@ def create(destination: Path, brief: Path | None = None, *, root: Path = ROOT) -
         files[Path("scripts") / name] = (root / "scripts" / name).read_bytes()
     files[Path("AGENTS.md")] = (
         f"Read `.github/skills/{SKILL}/SKILL.md` and `brief.md`.\n"
+        "Define what the viewer can predict and explain; state prerequisite assumptions.\n"
+        "Orient the viewer: broader task, bottleneck, related approaches, then this contribution.\n"
+        "Explain why before optimizing how. Include a changed case and thinking time.\n"
+        "Prefer a relatable example whose meaning explains the mechanism, not arbitrary A/B labels.\n"
+        "Review reasoning before polish; rendering is not evidence of learning.\n"
         "Use native Manim and scene-local helpers; invent the visual representation.\n"
         "Setup: `uv sync --locked --no-dev`. Render with native `python -m manim`.\n"
         "Utilities: `scripts/narrate.py` and `scripts/frames.py` (see --help).\n"
@@ -40,7 +45,18 @@ def create(destination: Path, brief: Path | None = None, *, root: Path = ROOT) -
     ).encode()
     content = (
         brief.expanduser().read_bytes() if brief else
-        b"# Video brief\n\nTopic:\nAudience:\nSources:\nLength:\nNarration: MAI-Voice-2 / Harper\n"
+        b"# Video brief\n\n"
+        b"Topic and technical sources:\n"
+        b"Audience and specific concepts they already know:\n"
+        b"Broader task, bottleneck, and how this method relates to other approaches:\n"
+        b"After viewing, they should be able to predict or explain:\n"
+        b"Likely misconception to address:\n"
+        b"Familiar example or situation that makes the mechanism meaningful:\n"
+        b"Scope and details to leave out:\n"
+        b"Length constraint, if any (reduce scope rather than rush):\n"
+        b"Narration: silent draft; MAI-Voice-2 / Harper if speech is authorized\n\n"
+        b"Use a checked example and a changed case. Choose the picture from the\n"
+        b"reasoning, and give the viewer time to think before revealing answers.\n"
     )
     if not content.decode("utf-8-sig").strip():
         raise ValueError("The brief must contain nonblank UTF-8 text.")

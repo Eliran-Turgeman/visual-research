@@ -194,6 +194,17 @@ def test_new_project_copies_only_skill_utilities_and_environment(tmp_path):
     }
     assert (destination / "uv.lock").read_bytes() == (ROOT / "uv.lock").read_bytes()
     assert "SKILL.md" in (destination / "AGENTS.md").read_text()
+    for name in ("SKILL.md", "MANIM_GUIDE.md"):
+        assert (destination / ".github" / "skills" / new_project.SKILL / name).read_bytes() == (
+            ROOT / "skills" / new_project.SKILL / name
+        ).read_bytes()
+    brief = (destination / "brief.md").read_text()
+    assert "concepts they already know" in brief
+    assert "predict or explain" in brief
+    assert "misconception" in brief
+    assert "Familiar example" in brief
+    assert "Broader task, bottleneck" in brief
+    assert "silent draft" in brief
 
 
 def test_new_project_preserves_custom_brief_bytes(tmp_path):

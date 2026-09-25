@@ -1,26 +1,335 @@
 [
-  {"id":"b01","purpose":"Open on wasted alternate continuations","visual":"One draft chain appears, then a plausible branch competes for a limited verifier slot.","narration":"Drafting one chain is cheap. But which alternative paths deserve verification?"},
-  {"id":"b02","purpose":"Establish the carried root","visual":"Context ends before orange root b; masked slots appear after it; features arrow comes only from context.","narration":"D D tree starts with a bonus token, b, selected but not yet processed by the target. Available target features describe only the preceding context."},
-  {"id":"b03","purpose":"Establish block diffusion","visual":"A single pass changes three masks into simultaneous distributions; small bars reveal A and B probabilities.","narration":"D Flash predicts all three masked positions in one block-diffusion pass. Here are toy token distributions."},
-  {"id":"b04","purpose":"Distinguish surrogate and target conditionals","visual":"Draft formula builds from three shared marginals; target formula adds earlier chosen tokens to its condition.","narration":"Multiplying shared marginals gives the surrogate Q. Unlike Q, the target conditions on actual preceding tokens."},
-  {"id":"b05","purpose":"Set root convention and prefix identity","visual":"Root and five empty budget marks; A then AA nodes show final-token A at different paths.","narration":"Five speculative nodes plus the root: six verifier inputs. Nodes represent prefixes; circles contain actual tokens."},
-  {"id":"b06","purpose":"Compute prefix mass with operands visible","visual":"Highlight .60 and .70; copy into product .60 × .70 and reveal .420 beside AA.","narration":"Score A A by multiplying point six by point seven: point four two. This is a prefix probability under Q, not target confidence."},
-  {"id":"b07","purpose":"Explain ancestor closure","visual":"Extend AA to AAA; .420 × .80 becomes .336; descending staircase links parent and child.","narration":"Extend by point eight to get point three three six. With probabilities strictly between zero and one, descendants always score below their ancestors."},
-  {"id":"b08","purpose":"Begin best-first selection","visual":"Reset ghost previews; queue A .600 pops to tree; B .400 and AA .420 enter frontier.","narration":"Choose largest masses first. The heap starts with A. Taking it exposes just the next sibling, B, and the first child, A A."},
-  {"id":"b09","purpose":"Second pop and two successors","visual":"AA .420 wins over B .400; add node; reveal AB .180 and AAA .336 in queue.","narration":"A A wins. Its sibling scores point one eight; its child scores point three three six."},
-  {"id":"b10","purpose":"Width competes with depth","visual":"B .400 pops before AAA .336; B branch appears and BA .280 joins queue.","narration":"Now B wins over the deeper A A A. Taking B exposes B A, with mass point two eight. Width and depth compete in the same priority queue."},
-  {"id":"b11","purpose":"Complete budgeted construction","visual":"AAA then BA fill final two slots; BAA .224 remains outside budget.","narration":"Take A A A, then B A. Five slots are full. B A A stays outside. The implementation uses sums of logs for numerical stability."},
-  {"id":"b12","purpose":"Connect prefix mass to expectation","visual":"Tree nodes group by depth; depth sums 1.000, .700, .336 accumulate to 2.036.","narration":"Add selected masses by depth: one, point seven, point three three six. Expected matches under Q: two point zero three six."},
-  {"id":"b13","purpose":"Show distribution-dependent topology","visual":"Budget3 keeps A AA B on left; concentrated marginals on right grow A AA AAA.","narration":"Compare with three slots. These marginals buy a branch. Put point nine on A at the first two positions, and the winners form a chain."},
-  {"id":"b14","purpose":"Limit the optimality claim","visual":"Concentrated .900 .810 .648 appear; Q-only optimum underlined; target conditional branch remains distinct.","narration":"These products favor the chain. Selection is optimal for Q, not necessarily for target acceptance or latency."},
-  {"id":"b15","purpose":"Compile flattened input and depth positions","visual":"Restore main tree, copy nodes into flat array b A A B A A; depths 0 1 2 1 3 2 align.","narration":"Verify our five-node tree. Flatten tokens in construction order, but assign positions by depth. Siblings share positions; storage indices are not language positions."},
-  {"id":"b16","purpose":"Derive the ancestor mask","visual":"Six by six mask appears; BA row lights b B BA, while A branch stays blocked.","narration":"The B A node may attend to the cached context, the root, B, and itself. It must not see the other branch. The mask enforces precisely that ancestry."},
-  {"id":"b17","purpose":"Parallel target outputs, conditional semantics","visual":"All allowed mask cells fill; one target pass lights all node outputs; two different condition labels reveal.","narration":"One target pass scores every selected path, with path-conditioned outputs. A prediction after B can differ from a prediction after A."},
-  {"id":"b18","purpose":"Start target-directed traversal","visual":"Mask exits; target choices appear beside root B, B A, BA B; root pointer follows B despite A larger draft score.","narration":"In this toy outcome, the target chooses B at the root, despite A's larger draft score. B is a child, so follow it."},
-  {"id":"b19","purpose":"Continue without another target call","visual":"B output A highlighted, walk to BA, append actual A in output strip.","narration":"At B, the target output chooses A. That child exists too. Follow it without another forward pass. Two speculative tokens have matched."},
-  {"id":"b20","purpose":"Stop on unmatched token, do not discard","visual":"BA output B reveals absent child; output receives outlined B marked next root, not cache-processed.","narration":"At B A, the target chooses B. No child matches: stop the walk. Emit this token as the next bonus, still unprocessed by the target."},
-  {"id":"b21","purpose":"Clarify no rejection ratio and stopping variants","visual":"Target-choice chip changes greedy to sampled; missing-child and leaf symbols converge on next bonus; EOS truncation strip.","narration":"Follow target choices, greedy or sampled, without acceptance ratios. Leaves also end the walk. Generation respects token limits and retains the first stop token."},
-  {"id":"b22","purpose":"Compact only the matched cache","visual":"Cache cells b A AA B AAA BA filter into b B BA; bonus B remains outside cache.","narration":"Compact the target cache to the processed path: b, B, A. Discard unused branches. Keep the newly selected bonus outside that cache until the next round processes it."},
-  {"id":"b23","purpose":"Show the payoff and cost boundary","visual":"Next bonus shifts into root while unused distributions leave; one drafter pass, build, target pass, compact aligned as cost stages.","narration":"Draft scores allocate paths; target conditionals choose tokens. More coverage costs tree construction, verification, and cache work."},
-  {"id":"b24","purpose":"End on promised visible relationship","visual":"Budget dots link to surviving branch coverage; orange target path remains and next root starts new masks; compact source credit.","narration":"D D tree buys more chances to continue. The target still chooses the tokens."}
+  {
+    "id": "inference",
+    "section": "The bigger problem: inference",
+    "purpose": "Locate DDTree in using a trained language model, before introducing its specialized mechanism.",
+    "narration": "Inference means using a trained model to produce an answer, rather than training it. For a typical language model, the prompt and generated text form a prefix used to predict the next token.",
+    "anchor": "Inference uses the trained model. The prefix is the text available so far.",
+    "seconds": 12
+  },
+  {
+    "id": "autoregressive_loop",
+    "section": "The bigger problem: inference",
+    "purpose": "Make the repeated target-model calls the concrete bottleneck that motivates speculation.",
+    "narration": "That is autoregressive decoding: choose a token, add it to the prefix, then run the target model again. Caching reuses earlier work, but the next-token decisions still form a sequential loop.",
+    "anchor": "Cached earlier work; sequential next-token decisions. Not a measured timeline.",
+    "seconds": 13
+  },
+  {
+    "id": "speculation",
+    "section": "The bigger problem: inference",
+    "purpose": "Introduce draft and target as distinct roles and explain why proposing a block can help.",
+    "narration": "Speculative decoding adds a cheaper drafter. It proposes several tokens, then the target checks those positions together in one pass. Accepted proposals can advance several tokens while correct verification preserves the target's decoding behavior.",
+    "anchor": "Cheap proposals plus correct target verification, not a replacement model.",
+    "seconds": 14
+  },
+  {
+    "id": "draft_bottleneck",
+    "section": "Faster drafting with DFlash",
+    "purpose": "Identify the remaining sequential work that motivates a parallel drafter.",
+    "narration": "But a drafter that also predicts one token at a time still needs several dependent steps. Parallel checking does not make that drafting work parallel.",
+    "anchor": "Focus on the drafter: one proposal can depend on the previous proposal.",
+    "seconds": 11
+  },
+  {
+    "id": "masked_diffusion",
+    "section": "Faster drafting with DFlash",
+    "purpose": "Explain masked-token diffusion without implying that all diffusion generation uses one step.",
+    "narration": "Masked-token diffusion offers another approach: learn to recover hidden text, updating several positions together. Many diffusion systems repeat that refinement; diffusion does not automatically mean one step.",
+    "anchor": "Masked-token diffusion predicts hidden text, often through repeated refinement.",
+    "seconds": 13
+  },
+  {
+    "id": "dflash",
+    "section": "Faster drafting with DFlash",
+    "purpose": "Place diffusion in the drafting stage and identify DFlash's single-pass, target-conditioned design.",
+    "narration": "D Flash uses a small block-diffusion drafter to predict the whole block in one pass. It receives context features from the target's already-processed text. Diffusion accelerates the draft; the target remains autoregressive.",
+    "anchor": "DFlash: one block-draft pass, conditioned on target context features.",
+    "seconds": 14
+  },
+  {
+    "id": "ddtree_context",
+    "section": "Where DDTree fits",
+    "purpose": "Connect DFlash's alternative probabilities to DDTree's budget question, then motivate the worked example.",
+    "narration": "A single drafted chain uses just one choice at each position. D D tree instead uses the alternative probabilities to build several possible paths under a verification budget. Which continuations deserve those slots?",
+    "anchor": "DFlash supplies probabilities. DDTree allocates paths. The target verifies.",
+    "seconds": 14
+  },
+  {
+    "id": "problem",
+    "section": "1. Why buy more than one future?",
+    "purpose": "Distinguish a cheap proposal from the model that actually decides.",
+    "narration": "Now make that budget question concrete. We are completing a message: My dog stayed outside. Suppose the drafter proposes those last three words. Each word is one token in this tiny example.",
+    "anchor": "A familiar message; one word per toy token.",
+    "seconds": 13
+  },
+  {
+    "id": "miss",
+    "section": "1. Why buy more than one future?",
+    "purpose": "Make a missing branch a concrete lost opportunity, not an incorrect output.",
+    "narration": "But the more expensive target model chooses cat, not dog. We write cat. The problem is wasted preparation: this chain continued the dog history, not the cat history.",
+    "anchor": "A missing route stops reuse; it does not overrule the target.",
+    "seconds": 10
+  },
+  {
+    "id": "budget",
+    "section": "1. Why buy more than one future?",
+    "purpose": "Motivate a fixed-budget choice between depth and alternatives.",
+    "narration": "With the same three draft slots, we could prepare cat instead of the final word outside. Should we finish one possible sentence, or cover another beginning?",
+    "anchor": "Same budget: a deeper chain or another branch?",
+    "seconds": 10
+  },
+  {
+    "id": "marginals",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Establish the factorized toy distribution and distinguish its role from the target.",
+    "narration": "Here are the D Flash drafter's three position distributions: dog or cat, stayed or slept, then outside or inside. These probabilities are illustrative, not measured language statistics.",
+    "anchor": "Toy word probabilities; every column sums to 1.",
+    "seconds": 14
+  },
+  {
+    "id": "prefix_operands",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Explain why the surrogate reuses per-position probabilities across branches.",
+    "narration": "Our draft model, Q, reuses these position probabilities on every path. The phrase dog stayed requires dog first, then stayed.",
+    "anchor": "Q gives stayed the same probability after dog or cat.",
+    "seconds": 11
+  },
+  {
+    "id": "prefix_product",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Connect multiplication to the chance of reaching a complete prefix.",
+    "narration": "Under this factorized model, multiply point six for dog by point seven for stayed: point four two. That is this prefix's chance under Q, not the target's confidence.",
+    "anchor": "Prefix mass under Q: 0.60 x 0.70 = 0.420.",
+    "seconds": 12
+  },
+  {
+    "id": "ancestor",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Establish the ancestor constraint needed for valid highest-mass selection.",
+    "narration": "Extending to dog stayed outside multiplies by point eight. The mass falls to point three three six. Adding another requirement lowers the chance, so this descendant scores below its ancestors.",
+    "anchor": "q(dog stayed outside) = 0.420 x 0.80 = 0.336.",
+    "seconds": 12
+  },
+  {
+    "id": "count_matches",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Define matched length as one unit earned for each reached selected depth.",
+    "narration": "Consider this candidate five-node tree. If the continuation is dog stayed outside, it earns three matches: dog, then stayed, then outside. One match for each selected depth.",
+    "anchor": "Count one match per reached depth. The carried root is extra.",
+    "seconds": 11
+  },
+  {
+    "id": "depth_one",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Show the first survival probability rather than merely displaying a sum.",
+    "narration": "At depth one, both dog and cat are covered. Their chances add to one, so the first match is certain under our two-choice draft model.",
+    "anchor": "Chance of at least 1 match: 0.600 + 0.400 = 1.000.",
+    "seconds": 10
+  },
+  {
+    "id": "branch_product",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Make the second branch's contribution available before using it in the expectation.",
+    "narration": "For cat stayed, use the same product rule: point four for cat, times point seven for stayed. That gives point two eight.",
+    "anchor": "q(cat stayed) = 0.40 x 0.70 = 0.280.",
+    "seconds": 10
+  },
+  {
+    "id": "depth_two",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Connect mutually exclusive prefixes to the second survival probability.",
+    "narration": "A second match needs dog stayed or cat stayed. Those are different possible messages. Their masses add to point seven, so we earn the second match seventy percent of the time under Q.",
+    "anchor": "Chance of at least 2 matches: 0.420 + 0.280 = 0.700.",
+    "seconds": 13
+  },
+  {
+    "id": "depth_three",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Connect the last selected depth to its contribution to matched length.",
+    "narration": "Only dog stayed outside reaches a third selected depth. Its chance is point three three six.",
+    "anchor": "Chance of at least 3 matches: 0.336.",
+    "seconds": 8
+  },
+  {
+    "id": "expectation",
+    "section": "2. What does one prefix buy?",
+    "purpose": "Derive expectation by adding contributions, then connect it to the selection objective.",
+    "narration": "Each reached depth contributes one match. Add those chances to get two point zero three six expected matches under Q. Equivalently, add the mass of every selected prefix.",
+    "anchor": "Expected matches under Q = 1.000 + 0.700 + 0.336 = 2.036.",
+    "seconds": 13
+  },
+  {
+    "id": "selection_rule",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Derive the ranking rule from the objective and ancestor property.",
+    "narration": "Each node costs one slot and contributes its prefix mass. Choose the largest masses. Because ancestors score higher than descendants, this selection also keeps the paths connected.",
+    "anchor": "Fixed node budget + Q objective: take the highest prefix masses.",
+    "seconds": 12
+  },
+  {
+    "id": "first_two",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Model the first two selections before handing a choice to the viewer.",
+    "narration": "Dog scores point six. Dog stayed scores point four two. Those are the first two prefixes to prepare.",
+    "anchor": "Five draft slots. Prepared so far: dog, then dog stayed.",
+    "seconds": 8
+  },
+  {
+    "id": "choose_question",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Ask the viewer to apply the score rule instead of following another narrated pop.",
+    "narration": "Now choose. Should the next slot prepare cat, at point four, or finish dog stayed outside, at point three three six?",
+    "anchor": "Your choice: cat at 0.400, or dog stayed outside at 0.336?",
+    "seconds": 10,
+    "think": 4
+  },
+  {
+    "id": "choose_answer",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Explain the choice in terms of marginal contribution, not visual depth.",
+    "narration": "Cat wins. Finishing the longer phrase is not automatically more valuable. Preparing cat contributes more expected matches under Q for the same one-slot cost.",
+    "anchor": "Prepare cat: 0.400 > 0.336. Branching is not always better.",
+    "seconds": 11
+  },
+  {
+    "id": "finish_selection",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Complete the worked selection while compressing familiar comparisons.",
+    "narration": "The next two choices are dog stayed outside and cat stayed. Five slots are full. Cat stayed outside is next in line, but outside the budget.",
+    "anchor": "Five draft nodes selected. The carried word My is extra.",
+    "seconds": 11
+  },
+  {
+    "id": "contrast_question",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Test whether the viewer can transfer the ranking rule to concentrated probabilities.",
+    "narration": "Now compare both distributions with three slots. Raise the chances of dog and stayed to point nine each. After dog and dog stayed, would you prepare cat or dog stayed outside?",
+    "anchor": "Same three-slot budget on both sides. Predict: branch or depth?",
+    "seconds": 13,
+    "think": 6
+  },
+  {
+    "id": "contrast_answer",
+    "section": "3. Spend the budget on coverage",
+    "purpose": "Show that topology follows the distribution rather than a fixed preference for trees.",
+    "narration": "Now dog stayed outside scores point six four eight, while cat scores only point one. The same rule chooses a chain. Cover another beginning only when its probability justifies the slot.",
+    "anchor": "0.90 x 0.90 x 0.80 = 0.648 > 0.100. Depth wins this time.",
+    "seconds": 13
+  },
+  {
+    "id": "target_roles",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Distinguish allocation under Q from actual target-conditioned decisions.",
+    "narration": "Return to our five-node tree. In this example, the target prefers outside after dog stayed, but inside after cat stayed. Both histories end in stayed, yet the earlier animal changes the prediction.",
+    "anchor": "Same last word, different history: the target can predict differently.",
+    "seconds": 14
+  },
+  {
+    "id": "flatten",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Motivate flat storage and explicitly map prefix identity and language position.",
+    "narration": "Pack the tree's words into one array. Stayed appears twice, once for each animal's history. Those entries share a language position, but are not interchangeable. Positions follow depth, not array order.",
+    "anchor": "Six inputs: root + five draft nodes. Position = root position + depth.",
+    "seconds": 12
+  },
+  {
+    "id": "mask_question",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Use the two meanings of stayed to make incorrect cross-branch attention concrete.",
+    "narration": "Take stayed on the cat path. Each column is a token it might see. Should it be allowed to look at stayed on the dog path?",
+    "anchor": "Can the cat's stayed see the dog's stayed?",
+    "seconds": 11,
+    "think": 5
+  },
+  {
+    "id": "mask_answer",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Explain the mask as preserving conditional meaning rather than a matrix recipe.",
+    "narration": "No. That would mix two different messages. On the cat path, stayed may see My, cat, itself, and earlier cached context. It must not borrow the dog's history.",
+    "anchor": "Cat-path stayed sees My, cat, itself, and prior context.",
+    "seconds": 13
+  },
+  {
+    "id": "parallel_outputs",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Explain how one masked target pass supplies reusable, path-correct outputs.",
+    "narration": "Apply that rule to every row. One target pass now produces a next-token distribution at each node, without leaking information between branches.",
+    "anchor": "One target pass; separate path-conditioned outputs.",
+    "seconds": 11
+  },
+  {
+    "id": "prepared_choices",
+    "section": "4. Evaluate paths without mixing them",
+    "purpose": "Make precomputed target outputs visible before traversal so reuse is not mistaken for another model call.",
+    "narration": "For this toy run, suppose the choices from those target outputs are these. All these outputs are available before we walk a branch. Walking will read them, not recompute them.",
+    "anchor": "Toy target choices, already available. Walking reads; it does not recompute.",
+    "seconds": 13
+  },
+  {
+    "id": "walk_question",
+    "section": "5. Follow the target, not the draft",
+    "purpose": "Expose the misconception that the largest draft score chooses the output token.",
+    "narration": "At My, the target chooses cat. The draft ranked dog higher. Which word goes into the message?",
+    "anchor": "Draft prefers dog. Target chooses cat. What do we write?",
+    "seconds": 9,
+    "think": 4
+  },
+  {
+    "id": "walk_first",
+    "section": "5. Follow the target, not the draft",
+    "purpose": "Use an explicit conflicting decision to separate correctness from proposal ranking.",
+    "narration": "Cat. The target decides. Because we prepared a cat branch, we can follow it and reuse the output already computed for that history.",
+    "anchor": "Write cat; follow its prepared branch.",
+    "seconds": 10
+  },
+  {
+    "id": "walk_second",
+    "section": "5. Follow the target, not the draft",
+    "purpose": "Demonstrate another matched step without implying a second target pass.",
+    "narration": "After My cat, the target chooses stayed. We prepared that continuation too. Two speculative words have matched, without another target forward pass.",
+    "anchor": "Write stayed; reuse its cat-path output. Two speculative matches.",
+    "seconds": 11
+  },
+  {
+    "id": "bonus",
+    "section": "5. Follow the target, not the draft",
+    "purpose": "Distinguish selecting an output token from processing it as a model input.",
+    "narration": "Now the target chooses inside. We did not prepare that child. Write inside anyway, then stop this walk. The word has been selected, but not yet processed as a model input.",
+    "anchor": "My cat stayed inside. Carry the unprocessed word inside into the next round.",
+    "seconds": 14
+  },
+  {
+    "id": "cache",
+    "section": "5. Follow the target, not the draft",
+    "purpose": "Close the round with the correct state boundary and discard hypothetical histories.",
+    "narration": "Keep the processed history My cat stayed in the target cache. Discard the unused dog history. Inside is the new bonus word: it becomes the next root and gets processed next round.",
+    "anchor": "Cached: My cat stayed. The selected word inside is not cached yet.",
+    "seconds": 14
+  },
+  {
+    "id": "transfer_question",
+    "section": "6. Change the draft, keep the target",
+    "purpose": "Test the central model on two different trees with the same target decision.",
+    "narration": "Return to the two three-slot trees. The target still wants My cat. Does a draft that strongly prefers the dog change the message, or only whether we prepared the useful route?",
+    "anchor": "The target still wants My cat. Does changing the draft change the message?",
+    "seconds": 12,
+    "think": 6
+  },
+  {
+    "id": "transfer_answer",
+    "section": "6. Change the draft, keep the target",
+    "purpose": "Resolve the changed case and separate output identity from speculative reuse.",
+    "narration": "Both write cat. The branched tree prepared that word and gets a speculative match. The dog-only chain did not, so cat becomes its next bonus immediately. Preparation changes; the target's decision does not.",
+    "anchor": "Both write My cat. Preparing a route buys reuse, not authority.",
+    "seconds": 14
+  },
+  {
+    "id": "boundary",
+    "section": "6. Change the draft, keep the target",
+    "purpose": "Limit the surrogate optimality claim and consolidate the mechanism.",
+    "narration": "D Flash makes drafting parallel. D D tree uses its scores to buy coverage. That ranking is optimal under Q and a fixed node budget, not necessarily for the target or for speed. Construction, verification, and cache work still cost time. The target still chooses the tokens.",
+    "anchor": "Parallel drafting, budgeted coverage, unchanged target authority. Not free speedup.",
+    "seconds": 20
+  }
 ]
